@@ -2,22 +2,21 @@
 import { fmt, toNumber, setText } from "../utils/helpers.js";
 import { bfNavy, bfDeurenberg, mediana, bmr, activityFactor, macrosDefault } from "../utils/formulas.js";
 
+// flag de modo de macros (padrão: somente proteína fixa; SHIFT em "Calcular" ativa proteína+gordura)
+let MODE_PG_FIRST = false;
+
 export function mountProfile({ supabase }) {
-  // Mostrar/ocultar quadril conforme sexo
   const fieldHip = $("#field-hip");
   $("#sex").addEventListener("change", () => {
     fieldHip.classList.toggle("hidden", $("#sex").value !== "female");
   });
 
-  // Ajuste automático de goal_pct ao trocar Meta
   const GOAL_DEFAULT = { cut: -15, maintenance: 0, bulk: 10 };
   $("#goal_type").addEventListener("change", () => {
     $("#goal_pct").value = GOAL_DEFAULT[$("#goal_type").value] ?? 0;
-    // Se quiser recalcular na hora, descomente:
-    // $("#btn-calc").click();
   });
 
-  // Carrega perfil ao autenticar
+  // carrega perfil ao autenticar
   supabase.auth.onAuthStateChange(async (_evt, session) => {
     if (!session) return;
     const { data, error } = await supabase
@@ -32,7 +31,6 @@ export function mountProfile({ supabase }) {
     $("#nav-user").textContent = session.user.email;
   });
 
-  // Lê os campos do formulário
   function readForm() {
     return {
       name: $("#name").value.trim() || null,
@@ -50,7 +48,6 @@ export function mountProfile({ supabase }) {
     };
   }
 
-  // Preenche com dados do DB
   function fill(p) {
     $("#name").value = p.name ?? "";
     $("#sex").value = p.sex ?? "";
@@ -70,10 +67,16 @@ export function mountProfile({ supabase }) {
     setText("o_kcal", fmt(p.tdee_kcal ?? 0, 0));
   }
 
-  // Cálculos
-  $("#btn-calc").addEventListener("click", () => {
+  // cálculo
+  $("#btn-calc").addEventListener("click", (ev) => {
+    // SHIFT ativa o modo Proteína+Gordura primeiro (sem mudar HTML agora)
+    if (ev.shiftKey) MODE_PG_FIRST = !MODE_PG_FIRST;
+
     const f = readForm();
-    if (!f.sex) { $("#profile-msg").textContent = "Escolha sexo."; return; }
+    const msg = $("#profile-msg");
+    msg.textContent = "";
+
+    if (!f.sex) { msg.textContent = "Escolha o sexo."; return; }
 
     const navy = bfNavy({
       sex: f.sex, height_cm: f.height_cm, neck_cm: f.neck_cm,
@@ -89,7 +92,20 @@ export function mountProfile({ supabase }) {
     const tdee_base = bmrVal * af;
     const kcal_alvo = Math.round(tdee_base * (1 + (f.goal_pct / 100)));
 
-    const { prot_g, carb_g, gord_g } = macrosDefault(f.weight_kg, kcal_alvo);
+    // ---- macros ----
+    let prot_g, gord_g, carb_g;
+    if (!MODE_PG_FIRST) {
+      // modo padrão (proteína fixa por peso; resto em C/G padrão)
+      ({ prot_g, gord_g, carb_g } = macrosDefault(f.weight_kg, kcal_alvo));
+    } else {
+      // modo P+G primeiro (ex.: 2.2g/kg proteína e 0.8g/kg gordura)
+      const pPerKg = 2.2;
+      const gPerKg = 0.8;
+      prot_g = +(f.weight_kg * pPerKg).toFixed(0);
+      gord_g = +(f.weight_kg * gPerKg).toFixed(0);
+      const kcalPG = prot_g * 4 + gord_g * 9;
+      carb_g = Math.max(0, Math.round((kcal_alvo - kcalPG) / 4));
+    }
 
     setText("o_bf_navy", fmt(navy, 1));
     setText("o_bf_deur", fmt(deur, 1));
@@ -104,13 +120,20 @@ export function mountProfile({ supabase }) {
     $("#btn-save-profile").dataset.p    = prot_g;
     $("#btn-save-profile").dataset.c    = carb_g;
     $("#btn-save-profile").dataset.f    = gord_g;
+
+    msg.textContent = MODE_PG_FIRST
+      ? "Cálculo (Proteína+Gordura primeiro) feito."
+      : "Cálculo feito.";
   });
 
-  // Salvar
+  // salvar
   $("#btn-save-profile").addEventListener("click", async () => {
     const f = readForm();
+    const msg = $("#profile-msg");
+    msg.textContent = "Salvando...";
+
     const session = (await supabase.auth.getSession()).data.session;
-    if (!session) return;
+    if (!session) { msg.textContent = "Sessão inválida."; return; }
 
     const updateFields = {
       user_id: session.user.id,
@@ -131,6 +154,6 @@ export function mountProfile({ supabase }) {
       .from("profiles")
       .upsert(updateFields, { onConflict: "user_id" });
 
-    $("#profile-msg").textContent = error ? ("Erro: " + error.message) : "Salvo!";
+    msg.textContent = error ? ("Erro: " + error.message) : "Salvo!";
   });
 }
