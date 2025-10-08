@@ -1,130 +1,129 @@
-// components/diary.js
-import { toNumber } from "../utils/helpers.js";
-
+// components/diary.js — TROQUE a função mountDiary inteira por esta
 export function mountDiary({ supabase }) {
-  const $date = $("#diary-date");
-  const $meal = $("#meal-slot");
-  const $search = $("#food-search");
-  const $select = $("#food-select");
-  const $serv = $("#servings");
-  const $tbody = $("#entries-table tbody");
+  const dateEl = $("#diary-date");
+  const searchEl = $("#food-search");
+  const selectEl = $("#food-select");
+  const servingsEl = $("#servings");
+  const mealEl = $("#meal-slot");
+  const insertBtn = $("#btn-insert-entry");
+  const tbody = $("#entries-table tbody");
 
-  // data de hoje
-  const today = new Date().toISOString().slice(0, 10);
-  if (!$date.value) $date.value = today;
+  // Sempre deixo porções editável; quando um food é escolhido, eu apenas seto 1.0 se estiver vazio
+  servingsEl.removeAttribute("disabled");
 
-  // habilitar/ajustar porções
-  $serv.removeAttribute("disabled");
-  $serv.min = "0.1";
-  $serv.step = "0.1";
-  $serv.inputMode = "decimal";
-  $serv.style.width = "64px";
-  if (!$serv.value || Number($serv.value) <= 0) $serv.value = "1";
+  // Data de hoje
+  dateEl.value = new Date().toISOString().slice(0, 10);
 
-  // busca dinâmica + fallback sem texto (lista públicos)
-  $search.addEventListener("input", debounce(loadFoods, 250));
-  async function loadFoods() {
-    const q = ($search.value || "").trim();
-    let query = supabase
+  // Busca alimentos
+  let pick = null;
+  async function searchFoods(q) {
+    pick = null;
+    selectEl.innerHTML = "";
+    if (!q || q.trim().length < 2) return;
+
+    const { data, error } = await supabase
       .from("foods")
-      .select("id, name, brand, serving_desc, serving_g, energy_kcal_100, protein_g_100, carbs_g_100, fat_g_100")
+      .select("id,name,brand,energy_kcal_100g,protein_g_100g,carbs_g_100g,fat_g_100g,serving_desc,serving_g")
+      .ilike("name", `%${q}%`)
       .limit(20);
 
-    if (q) query = query.ilike("name", `%${q}%`);
-    else  query = query.eq("is_public", true);
-
-    const { data, error } = await query;
-    if (error) { console.error(error); $select.innerHTML = ""; return; }
-
-    $select.innerHTML = data.map(f =>
-      `<option value="${f.id}">
-        ${f.name}${f.brand && f.brand !== '-' ? ' • '+f.brand : ''} (${f.serving_desc || (f.serving_g ? f.serving_g+' g' : '100 g')})
-      </option>`
-    ).join("");
+    if (error) {
+      alert("Erro na busca de alimentos");
+      console.error(error);
+      return;
+    }
+    data.forEach((f) => {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.brand ? `${f.name} • ${f.brand}` : f.name;
+      opt.dataset.payload = JSON.stringify(f);
+      selectEl.appendChild(opt);
+    });
+    if (data.length) {
+      selectEl.selectedIndex = 0;
+      onChoose();
+    }
   }
 
-  // inserir entrada
-  $("#btn-insert-entry").addEventListener("click", async () => {
-    const food_id = $select.value;
-    const servings = toNumber($serv.value || "1");
-    if (!food_id || servings <= 0) {
+  function onChoose() {
+    const opt = selectEl.options[selectEl.selectedIndex];
+    if (!opt) return;
+    pick = JSON.parse(opt.dataset.payload);
+    if (!servingsEl.value || Number(servingsEl.value) <= 0) servingsEl.value = "1";
+  }
+
+  selectEl.addEventListener("change", onChoose);
+  searchEl.addEventListener("input", (e) => searchFoods(e.target.value));
+
+  // Inserir lançamento
+  insertBtn.addEventListener("click", async () => {
+    if (!pick || Number(servingsEl.value) <= 0) {
       alert("Escolha um alimento e informe porções > 0");
       return;
     }
+    const servings = Number(servingsEl.value);
+    const factor = pick.serving_g > 0 ? (servings * pick.serving_g) / 100 : servings;
 
-    const date = $date.value || today;
-    const meal_slot = $meal.value;
+    const payload = {
+      date: dateEl.value,
+      meal_slot: mealEl.value,
+      food_id: pick.id,
+      servings,
+      kcal: Math.round(pick.energy_kcal_100g * factor),
+      protein_g: +(pick.protein_g_100g * factor).toFixed(1),
+      carbs_g: +(pick.carbs_g_100g * factor).toFixed(1),
+      fat_g: +(pick.fat_g_100g * factor).toFixed(1),
+    };
 
-    // busca alimento para calcular macros por porção
-    const { data: foods, error: ferr } = await supabase
-      .from("foods")
-      .select("energy_kcal_100, protein_g_100, carbs_g_100, fat_g_100, serving_g")
-      .eq("id", food_id)
-      .limit(1);
-
-    if (ferr || !foods || !foods[0]) { console.error(ferr); return; }
-    const f = foods[0];
-    const factor = (f.serving_g && f.serving_g > 0) ? (f.serving_g / 100.0) : 1.0;
-
-    const kcal = Math.round((f.energy_kcal_100 * factor) * servings);
-    const p = +(f.protein_g_100 * factor * servings).toFixed(1);
-    const c = +(f.carbs_g_100   * factor * servings).toFixed(1);
-    const g = +(f.fat_g_100     * factor * servings).toFixed(1);
-
-    const { error } = await supabase.from("entries").insert([{
-      date, meal_slot, food_id, servings, kcal, protein_g: p, carbs_g: c, fat_g: g
-    }]);
-
-    if (error) { console.error(error); alert("Erro ao inserir: " + error.message); return; }
-
-    $serv.value = "1";
-    await loadEntries(); // recarrega tabela e resumo
+    const { error } = await supabase.from("entries").insert(payload);
+    if (error) {
+      alert("Erro ao inserir alimento");
+      console.error(error);
+      return;
+    }
+    await loadEntries();
+    servingsEl.value = "1";
   });
 
-  // carregar entradas
-  $date.addEventListener("change", loadEntries);
+  // Listagem do dia
   async function loadEntries() {
-    const date = $date.value || today;
+    tbody.innerHTML = "";
     const { data, error } = await supabase
       .from("entries")
-      .select("id, date, meal_slot, servings, kcal, protein_g, carbs_g, fat_g, foods(name)")
-      .eq("date", date)
-      .order("created_at", { ascending: true });
+      .select("id,meal_slot,servings,kcal,protein_g,carbs_g,fat_g, foods(name,brand)")
+      .eq("date", dateEl.value)
+      .order("timestamp", { ascending: true });
 
-    if (error) { console.error(error); return; }
+    if (error) {
+      console.error(error);
+      return;
+    }
 
-    $tbody.innerHTML = data.map(e => `
-      <tr>
-        <td>${labelMeal(e.meal_slot)}</td>
-        <td>${e.foods?.name ?? "-"}</td>
-        <td>${e.servings}</td>
-        <td>${e.kcal}</td>
-        <td>${e.protein_g}</td>
-        <td>${e.carbs_g}</td>
-        <td>${e.fat_g}</td>
-      </tr>
-    `).join("");
+    let sumK = 0, sumP = 0, sumC = 0, sumF = 0;
+    data.forEach((r) => {
+      sumK += r.kcal; sumP += r.protein_g; sumC += r.carbs_g; sumF += r.fat_g;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${labelMeal(r.meal_slot)}</td>
+        <td>${r.foods?.brand ? `${r.foods.name} • ${r.foods.brand}` : r.foods?.name || "-"}</td>
+        <td>${r.servings}</td>
+        <td>${r.kcal}</td>
+        <td>${r.protein_g}</td>
+        <td>${r.carbs_g}</td>
+        <td>${r.fat_g}</td>`;
+      tbody.appendChild(tr);
+    });
 
-    const sum = data.reduce((acc, x) => {
-      acc.kcal += x.kcal; acc.p += x.protein_g; acc.c += x.carbs_g; acc.g += x.fat_g;
-      return acc;
-    }, {kcal:0,p:0,c:0,g:0});
-
-    $("#sum-kcal").textContent = sum.kcal.toFixed(0);
-    $("#sum-p").textContent = sum.p.toFixed(0);
-    $("#sum-c").textContent = sum.c.toFixed(0);
-    $("#sum-f").textContent = sum.g.toFixed(0);
+    $("#sum-kcal").textContent = sumK;
+    $("#sum-p").textContent = sumP.toFixed(0);
+    $("#sum-c").textContent = sumC.toFixed(0);
+    $("#sum-f").textContent = sumF.toFixed(0);
   }
 
-  function labelMeal(v) {
-    return ({ breakfast:"Café", lunch:"Almoço", dinner:"Jantar", snack:"Lanche" }[v] || v);
-  }
-
-  function debounce(fn, ms) {
-    let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); };
-  }
-
-  // inicial
-  loadFoods();
+  dateEl.addEventListener("change", loadEntries);
   loadEntries();
+}
+
+function labelMeal(v) {
+  return ({ breakfast: "Café", lunch: "Almoço", dinner: "Jantar", snack: "Lanche" }[v] || v);
 }
