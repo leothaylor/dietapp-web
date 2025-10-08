@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DietApp • v1</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- Supabase JS (CDN oficial) -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">🍽️ DietApp</div>
+    <nav id="nav" class="hidden">
+      <button id="nav-diario" class="link">Diário</button>
+      <button id="nav-perfil" class="link">Perfil & Metas</button>
+      <span id="nav-user" class="muted"></span>
+      <button id="btn-logout" class="btn danger">Sair</button>
+    </nav>
+  </header>
+
+  <!-- Auth -->
+  <main id="view-auth" class="container card">
+    <h1>Entrar</h1>
+    <p class="muted">Use e-mail e senha. Se não tiver conta, será criada.</p>
+    <form id="form-auth" class="grid2">
+      <label>E-mail <input type="email" id="auth-email" required /></label>
+      <label>Senha <input type="password" id="auth-pass" required minlength="6"/></label>
+      <button class="btn primary" type="submit">Entrar / Criar conta</button>
+    </form>
+    <p id="auth-msg" class="msg"></p>
+  </main>
+
+  <!-- Perfil -->
+  <main id="view-profile" class="container hidden">
+    <div class="card">
+      <h2>Perfil & Metas</h2>
+      <form id="form-profile" class="grid4">
+        <label>Nome <input type="text" id="name" /></label>
+        <label>Sexo
+          <select id="sex" required>
+            <option value="">—</option>
+            <option value="male">Masculino</option>
+            <option value="female">Feminino</option>
+          </select>
+        </label>
+        <label>Idade (anos)<input type="number" id="age" min="10" max="100" required/></label>
+        <label>Altura (cm)<input type="number" id="height_cm" step="0.1" required/></label>
+
+        <label>Peso (kg)<input type="number" id="weight_kg" step="0.1" required/></label>
+        <label>Pescoço (cm)<input type="number" id="neck_cm" step="0.1" required/></label>
+        <label>Cintura (cm)<input type="number" id="waist_cm" step="0.1" required/></label>
+        <label id="field-hip" class="hidden">Quadril (cm)<input type="number" id="hip_cm" step="0.1"/></label>
+
+        <label>Rotina
+          <select id="activity_routine">
+            <option value="sedentary">Sedentário</option>
+            <option value="light">Levemente ativo</option>
+            <option value="moderate">Moderado</option>
+            <option value="active">Ativo</option>
+            <option value="very_active">Muito ativo</option>
+          </select>
+        </label>
+        <label>Treinos/semana
+          <select id="training_freq">
+            <option value="0">0</option>
+            <option value="1-2">1–2</option>
+            <option value="3-4">3–4</option>
+            <option value="5+">5+</option>
+          </select>
+        </label>
+        <label>Meta
+          <select id="goal_type">
+            <option value="cut">Cut</option>
+            <option value="maintenance">Manutenção</option>
+            <option value="bulk">Bulk</option>
+          </select>
+        </label>
+        <label>Ajuste meta (%) <input type="number" id="goal_pct" step="1" value="-15"/></label>
+      </form>
+
+      <div class="row gap">
+        <button id="btn-calc" class="btn">Calcular</button>
+        <button id="btn-save-profile" class="btn primary">Salvar</button>
+        <span id="profile-msg" class="msg"></span>
+      </div>
+
+      <div id="calc-out" class="grid4 muted">
+        <div>BF Navy: <b id="o_bf_navy">—</b>%</div>
+        <div>BF Deurenberg: <b id="o_bf_deur">—</b>%</div>
+        <div>BF Final: <b id="o_bf_final">—</b>%</div>
+        <div>BMR: <b id="o_bmr">—</b> kcal</div>
+        <div>TDEE base: <b id="o_tdee_base">—</b> kcal</div>
+        <div>Kcal alvo: <b id="o_kcal">—</b></div>
+        <div>Proteína: <b id="o_p">—</b> g</div>
+        <div>Carbo: <b id="o_c">—</b> g</div>
+        <div>Gordura: <b id="o_f">—</b> g</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Diário -->
+  <main id="view-diary" class="container hidden">
+    <div class="row between">
+      <h2>Diário</h2>
+      <div class="row gap">
+        <input type="date" id="diary-date"/>
+        <button id="btn-add-entry" class="btn">+ Adicionar alimento</button>
+      </div>
+    </div>
+
+    <section class="grid2">
+      <div class="card">
+        <h3>Refeições</h3>
+        <div class="row gap">
+          <select id="meal-slot">
+            <option value="breakfast">Café</option>
+            <option value="lunch">Almoço</option>
+            <option value="dinner">Jantar</option>
+            <option value="snack">Lanche</option>
+          </select>
+          <input id="food-search" placeholder="Buscar alimento..." />
+          <select id="food-select"></select>
+          <input id="servings" type="number" step="0.1" value="1"/>
+          <button id="btn-insert-entry" class="btn primary">Inserir</button>
+        </div>
+        <table id="entries-table">
+          <thead><tr><th>Refeição</th><th>Alimento</th><th>Porções</th><th>Kcal</th><th>P</th><th>C</th><th>G</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Resumo do dia</h3>
+        <div>Kcal alvo: <b id="sum-target">—</b></div>
+        <div>Consumido: <b id="sum-kcal">—</b></div>
+        <div>Proteína: <b id="sum-p">—</b> g</div>
+        <div>Carbo: <b id="sum-c">—</b> g</div>
+        <div>Gordura: <b id="sum-f">—</b> g</div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./config.js"></script>
+  <script src="./utils/helpers.js"></script>
+  <script src="./utils/formulas.js"></script>
+  <script src="./components/auth.js"></script>
+  <script src="./components/profile.js"></script>
+  <script src="./components/diary.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
