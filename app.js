@@ -1,97 +1,89 @@
-async function doLogin(email, password) {
-  setText('#auth-msg', 'Entrando...');
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    console.log('LOGIN RESULT:', { data, error });
-    if (error) {
-      setText('#auth-msg', `Erro ao entrar: ${error.message || error.description || error}`);
-      return;
-    }
-    // sucesso
-    setText('#auth-msg', '');
-    await onAuthChanged(data.session); // navega para o app
-  } catch (e) {
-    console.error('LOGIN EXCEPTION:', e);
-    setText('#auth-msg', `Falha inesperada no login: ${e.message || e}`);
-  }
+/************* CABEÇALHO SEGURO — INÍCIO *************/
+const msg = (t) => { const el = document.querySelector('#auth-msg'); if (el) el.textContent = t; };
+
+// 1) Garante que config e lib estão presentes
+const APP = (window.APP_CONFIG || {});
+if (!APP.SUPABASE_URL || !APP.SUPABASE_ANON_KEY) {
+  msg('Config ausente em window.APP_CONFIG.');
+  throw new Error('APP_CONFIG ausente');
+}
+if (!window.supabase || !window.supabase.createClient) {
+  msg('Biblioteca @supabase/supabase-js não carregou.');
+  throw new Error('Supabase SDK não está disponível no window');
 }
 
-async function doSignup(email, password) {
-  setText('#auth-msg', 'Criando conta...');
-  try {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    console.log('SIGNUP RESULT:', { data, error });
-    if (error) {
-      setText('#auth-msg', `Erro ao criar conta: ${error.message || error.description || error}`);
-      return;
+// 2) Cria o client e exporta global (window.SB) para evitar “undefined”
+const SB = window.supabase.createClient(
+  APP.SUPABASE_URL,
+  APP.SUPABASE_ANON_KEY,
+  { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }
+);
+window.SB = SB; // <— importante pra evitar escopo indefinido
+
+// 3) Listener único de sessão (evite ter outro abaixo)
+SB.auth.onAuthStateChange(async (event, session) => {
+  console.log('[AUTH CHANGE]', event, session);
+  const who = session?.user?.email || '—';
+  msg(`Auth: ${event} • user: ${who}`);
+  // Troca de telas simples
+  const show = (id) => {
+    for (const v of ['#view-auth','#view-profile','#view-diary']) {
+      const el = document.querySelector(v);
+      if (el) el.classList.add('hidden');
     }
-    // sucesso (com confirm email OFF, já volta logado)
-    setText('#auth-msg', '');
-    await onAuthChanged(data.session);
-  } catch (e) {
-    console.error('SIGNUP EXCEPTION:', e);
-    setText('#auth-msg', `Falha inesperada no cadastro: ${e.message || e}`);
-  }
-}
-// ---- DEBUG VISÍVEL (ajuda sem DevTools) ----
-(function debugAuth() {
-  const m = (txt) => {
-    const el = document.querySelector('#auth-msg');
-    if (el) el.textContent = txt;
+    const el = document.querySelector(id); if (el) el.classList.remove('hidden');
   };
+  if (session?.user) {
+    // Usuário logado
+    const nav = document.querySelector('#nav'); if (nav) nav.classList.remove('hidden');
+    const span = document.querySelector('#nav-user'); if (span) span.textContent = session.user.email;
+    show('#view-profile'); // ou #view-diary, como preferir
+  } else {
+    // Deslogado
+    const nav = document.querySelector('#nav'); if (nav) nav.classList.add('hidden');
+    show('#view-auth');
+  }
+});
 
-  // Mostra Config carregada
+// 4) Funções de ação (expostas no window)
+window.doLogin = async function doLogin(email, password) {
+  msg('Entrando…');
   try {
-    const c = window.APP_CONFIG || {};
-    m(`Config OK. URL: ${c.SUPABASE_URL?.slice(0, 35)}…  — Clique em Entrar/Criar conta.`);
-  } catch(e) {}
+    const { data, error } = await SB.auth.signInWithPassword({ email, password });
+    if (error) { msg('Erro ao entrar: ' + (error.message || error.error_description || '')); return; }
+    msg('Login OK!');
+  } catch (e) { msg('Falha inesperada no login: ' + (e.message || e)); }
+};
 
-  // Loga qualquer mudança de sessão na tela
+window.doSignup = async function doSignup(email, password) {
+  msg('Criando conta…');
   try {
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[AUTH CHANGE]', event, session);
-      const who = session?.user?.email || '—';
-      m(`Auth: ${event}  •  user: ${who}`);
-    });
-  } catch(e) {
-    m('Erro inicializando listener de auth: ' + (e.message || e));
-  }
+    const { data, error } = await SB.auth.signUp({ email, password });
+    if (error) { msg('Erro ao criar conta: ' + (error.message || error.error_description || '')); return; }
+    msg('Conta criada! Verificando sessão…');
+  } catch (e) { msg('Falha inesperada no cadastro: ' + (e.message || e)); }
+};
 
-  // Se clicar em Entrar ou Criar conta e der erro, vamos imprimir detalhado
-  const showError = (lbl, err) => {
-    console.error(lbl, err);
-    const msg = err?.message || err?.error_description || JSON.stringify(err);
-    m(`${lbl}: ${msg}`);
-  };
+window.doLogout = async function doLogout() {
+  try { await SB.auth.signOut(); msg('Saiu.'); } 
+  catch (e) { msg('Erro ao sair: ' + (e.message || e)); }
+};
 
-  // “monkey patch” leve nas funções se existirem
-  if (typeof doLogin === 'function') {
-    const _old = doLogin;
-    window.doLogin = async function(email, pass) {
-      m('Entrando…'); 
-      try {
-        const r = await supabase.auth.signInWithPassword({ email, password: pass });
-        if (r.error) return showError('Erro ao entrar', r.error);
-        m('Login OK! Redirecionando…');
-        return onAuthChanged(r.data.session);
-      } catch (e) {
-        return showError('Falha inesperada no login', e);
-      }
-    };
-  }
-  if (typeof doSignup === 'function') {
-    const _oldS = doSignup;
-    window.doSignup = async function(email, pass) {
-      m('Criando conta…');
-      try {
-        const r = await supabase.auth.signUp({ email, password: pass });
-        if (r.error) return showError('Erro ao criar conta', r.error);
-        m('Conta criada! Entrando…');
-        return onAuthChanged(r.data.session);
-      } catch (e) {
-        return showError('Falha inesperada no cadastro', e);
-      }
-    };
-  }
-})();
+// 5) Liga botões (use exatamente os IDs do seu index.html)
+const $ = (s) => document.querySelector(s);
+$('#btn-login')?.addEventListener('click', () => {
+  const email = $('#auth-email')?.value?.trim(); 
+  const pass = $('#auth-pass')?.value || '';
+  if (!email || !pass) return msg('Informe e-mail e senha.');
+  window.doLogin(email, pass);
+});
+$('#btn-signup')?.addEventListener('click', () => {
+  const email = $('#auth-email')?.value?.trim(); 
+  const pass = $('#auth-pass')?.value || '';
+  if (!email || !pass) return msg('Informe e-mail e senha.');
+  window.doSignup(email, pass);
+});
+$('#btn-logout')?.addEventListener('click', () => window.doLogout());
 
+console.log('SB READY', APP.SUPABASE_URL);
+/************* CABEÇALHO SEGURO — FIM *************/
