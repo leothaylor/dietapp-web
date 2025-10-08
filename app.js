@@ -1,122 +1,176 @@
 // app.js
-import { $, $$, byId, setText } from "./utils/helpers.js";
-import mountDiary from "./components/diary.js";
-import mountProfile from "./components/profile.js";
+import { $id, setText } from './utils/helpers.js';
 
+// --- Supabase ---
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-let currentUser = null;
-
-// ----------------- navegação/troca de views -----------------
-function show(view) {
-  // views: auth, profile, diary
-  byId("view-auth")?.classList.toggle("hidden", view !== "auth");
-  byId("view-profile")?.classList.toggle("hidden", view !== "profile");
-  byId("view-diary")?.classList.toggle("hidden", view !== "diary");
-  byId("nav")?.classList.toggle("hidden", view === "auth");
-}
-
-function wireNav() {
-  byId("nav-diario")?.addEventListener("click", () => show("diary"));
-  byId("nav-perfil")?.addEventListener("click", () => show("profile"));
-  byId("btn-logout")?.addEventListener("click", async () => {
-    try {
-      await supabase.auth.signOut();
-      currentUser = null;
-      setText(byId("nav-user"), "");
-      show("auth");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao sair");
-    }
-  });
-}
-
-// ----------------- autenticação -----------------
-function wireAuth() {
-  const form = byId("form-auth");
-  const emailEl = byId("auth-email");
-  const passEl  = byId("auth-pass");
-  const msgEl   = byId("auth-msg");
-
-  const setMsg = (s) => setText(msgEl, s ?? "");
-
-  form?.addEventListener("submit", async (ev) => {
-    ev.preventDefault();
-    setMsg("Entrando...");
-
-    const email = (emailEl?.value || "").trim().toLowerCase();
-    const password = passEl?.value || "";
-
-    try {
-      // 1) tenta login
-      let { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-      // 2) se falhar por credenciais, cria conta e entra
-      if (error && /invalid|credentials|not found/i.test(error.message)) {
-        const { error: e2 } = await supabase.auth.signUp({ email, password });
-        if (e2) {
-          setMsg("Erro ao criar conta: " + e2.message);
-          return;
-        }
-        setMsg("Conta criada. Entrando...");
-        // onAuthStateChange vai cuidar do resto
-        return;
-      }
-
-      if (error) {
-        setMsg("Erro: " + error.message);
-        return;
-      }
-
-      setMsg(""); // ok; onAuthStateChange assumirá
-    } catch (err) {
-      console.error(err);
-      setMsg("Erro inesperado. Tente novamente.");
-    }
-  });
-}
-
-// ----------------- ciclo de vida pós-login -----------------
-async function enterApp(session) {
-  currentUser = session?.user ?? null;
-
-  setText(byId("nav-user"), currentUser?.email || "");
-
-  // Só monta os módulos quando as views existem
-  // (evita querySelector falhar na tela de login)
-  mountProfile({ supabase, user: currentUser });
-  mountDiary({ supabase, user: currentUser });
-
-  show("diary"); // ou "profile", como preferir
-}
-
-function leaveApp() {
-  currentUser = null;
-  show("auth");
-}
-
-// ----------------- bootstrap -----------------
-document.addEventListener("DOMContentLoaded", async () => {
-  wireNav();
-  wireAuth();
-
-  // Estado inicial
-  try {
-    const { data } = await supabase.auth.getSession();
-    if (data?.session) {
-      await enterApp(data.session);
-    } else {
-      show("auth");
-    }
-  } catch {
-    show("auth");
+export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   }
-
-  // Sessões posteriores
-  supabase.auth.onAuthStateChange((_event, session) => {
-    if (session) enterApp(session);
-    else leaveApp();
-  });
 });
+
+// --- Views / elementos globais ---
+const views = {
+  auth: $id('view-auth'),
+  profile: $id('view-profile'),
+  diary: $id('view-diary'),
+};
+
+const nav = {
+  bar: $id('nav'),
+  btnDiary: $id('nav-diario'),
+  btnProfile: $id('nav-perfil'),
+  user: $id('nav-user'),
+  logout: $id('btn-logout'),
+};
+
+const auth = {
+  email: $id('auth-email'),
+  pass:  $id('auth-pass'),
+  login: $id('btn-login'),
+  signup:$id('btn-signup'),
+  msg:   $id('auth-msg'),
+};
+
+// util: troca de telas
+function show(view) {
+  Object.values(views).forEach(v => v.classList.add('hidden'));
+  view.classList.remove('hidden');
+}
+
+// habilita/desabilita botões de auth
+function lockAuth(locked) {
+  auth.login.disabled  = locked;
+  auth.signup.disabled = locked;
+  const t = locked ? 'Entrando…' : '';
+  setText('auth-msg', t);
+}
+
+// atualiza topo
+async function renderTopBar() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    nav.bar.classList.remove('hidden');
+    nav.user.textContent = user.email ?? '';
+  } else {
+    nav.bar.classList.add('hidden');
+    nav.user.textContent = '';
+  }
+}
+
+// fluxo pós login
+async function afterLogin() {
+  await renderTopBar();
+  // escolha padrão: abrir Perfil para preencher metas na 1ª vez
+  show(views.profile);
+}
+
+// --- Auth handlers ---
+auth.login.addEventListener('click', async () => {
+  lockAuth(true);
+  auth.msg.classList.remove('error');
+  try {
+    const email = auth.email.value.trim();
+    const password = auth.pass.value;
+    if (!email || !password) {
+      setText('auth-msg', 'Informe e-mail e senha.');
+      return;
+    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setText('auth-msg', error.message);
+      auth.msg.classList.add('error');
+      return;
+    }
+    await afterLogin();
+  } catch (e) {
+    setText('auth-msg', e.message || 'Falha ao entrar.');
+    auth.msg.classList.add('error');
+  } finally {
+    lockAuth(false);
+  }
+});
+
+auth.signup.addEventListener('click', async () => {
+  lockAuth(true);
+  auth.msg.classList.remove('error');
+  try {
+    const email = auth.email.value.trim();
+    const password = auth.pass.value;
+    if (!email || !password) {
+      setText('auth-msg', 'Informe e-mail e senha (mínimo 6).');
+      return;
+    }
+    // cria conta
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) {
+      setText('auth-msg', error.message);
+      auth.msg.classList.add('error');
+      return;
+    }
+    // com “Confirm email: OFF”, normalmente já vem sessão.
+    // Se não vier, tenta logar na sequência.
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess.session) {
+      const r = await supabase.auth.signInWithPassword({ email, password });
+      if (r.error) {
+        setText('auth-msg', r.error.message);
+        auth.msg.classList.add('error');
+        return;
+      }
+    }
+    await afterLogin();
+  } catch (e) {
+    setText('auth-msg', e.message || 'Falha ao criar conta.');
+    auth.msg.classList.add('error');
+  } finally {
+    lockAuth(false);
+  }
+});
+
+// logout robusto
+nav.logout.addEventListener('click', async () => {
+  try {
+    await supabase.auth.signOut();
+  } finally {
+    try {
+      // limpa qualquer cache local da SDK (chaves começam com 'sb-')
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith('sb-')) localStorage.removeItem(k);
+      });
+    } catch {}
+    await renderTopBar();
+    show(views.auth);
+  }
+});
+
+// navegação topo
+nav.btnDiary?.addEventListener('click', () => show(views.diary));
+nav.btnProfile?.addEventListener('click', () => show(views.profile));
+
+// troca de auth state → decide tela
+supabase.auth.onAuthStateChange(async (_evt, session) => {
+  await renderTopBar();
+  if (session) {
+    // se já logado, mantemos a tela atual; se estiver no auth, pula pro perfil
+    if (!views.profile.classList.contains('hidden') || !views.diary.classList.contains('hidden')) {
+      return;
+    }
+    show(views.profile);
+  } else {
+    show(views.auth);
+  }
+});
+
+// boot
+(async function start() {
+  await renderTopBar();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    show(views.profile);
+  } else {
+    show(views.auth);
+  }
+})();
