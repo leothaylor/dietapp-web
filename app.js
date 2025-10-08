@@ -1,89 +1,68 @@
-/************* CABEÇALHO SEGURO — INÍCIO *************/
+/************* CABEÇALHO SEGURO — COLE NO TOPO DO app.js *************/
 const msg = (t) => { const el = document.querySelector('#auth-msg'); if (el) el.textContent = t; };
 
-// 1) Garante que config e lib estão presentes
+// 1) Garante config e SDK
 const APP = (window.APP_CONFIG || {});
-if (!APP.SUPABASE_URL || !APP.SUPABASE_ANON_KEY) {
-  msg('Config ausente em window.APP_CONFIG.');
-  throw new Error('APP_CONFIG ausente');
-}
-if (!window.supabase || !window.supabase.createClient) {
-  msg('Biblioteca @supabase/supabase-js não carregou.');
-  throw new Error('Supabase SDK não está disponível no window');
-}
+if (!APP.SUPABASE_URL || !APP.SUPABASE_ANON_KEY) { msg('Config ausente em APP_CONFIG'); throw new Error('APP_CONFIG ausente'); }
+if (!window.supabase || !window.supabase.createClient) { msg('SDK Supabase não carregou'); throw new Error('SDK não disponível'); }
 
-// 2) Cria o client e exporta global (window.SB) para evitar “undefined”
+// 2) Cria client e disponibiliza globalmente
 const SB = window.supabase.createClient(
   APP.SUPABASE_URL,
   APP.SUPABASE_ANON_KEY,
   { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }
 );
-window.SB = SB; // <— importante pra evitar escopo indefinido
+window.SB = SB;
+// Alias para código legado que usa `supabase` como client:
+const supabase = SB;
+window.supabaseClient = SB;
 
-// 3) Listener único de sessão (evite ter outro abaixo)
-SB.auth.onAuthStateChange(async (event, session) => {
-  console.log('[AUTH CHANGE]', event, session);
-  const who = session?.user?.email || '—';
-  msg(`Auth: ${event} • user: ${who}`);
-  // Troca de telas simples
-  const show = (id) => {
-    for (const v of ['#view-auth','#view-profile','#view-diary']) {
-      const el = document.querySelector(v);
-      if (el) el.classList.add('hidden');
-    }
-    const el = document.querySelector(id); if (el) el.classList.remove('hidden');
-  };
+// 3) Listener único de sessão
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('[AUTH]', event, session);
+  const show = (id) => ['#view-auth','#view-profile','#view-diary'].forEach(sel=>{
+    const el = document.querySelector(sel); if (el) el.classList.toggle('hidden', sel!==id);
+  });
   if (session?.user) {
-    // Usuário logado
-    const nav = document.querySelector('#nav'); if (nav) nav.classList.remove('hidden');
-    const span = document.querySelector('#nav-user'); if (span) span.textContent = session.user.email;
-    show('#view-profile'); // ou #view-diary, como preferir
+    document.querySelector('#nav')?.classList.remove('hidden');
+    const u = document.querySelector('#nav-user'); if (u) u.textContent = session.user.email;
+    show('#view-profile');
+    msg('');
   } else {
-    // Deslogado
-    const nav = document.querySelector('#nav'); if (nav) nav.classList.add('hidden');
-    show('#view-auth');
+    document.querySelector('#nav')?.classList.add('hidden');
+    show('#view-auth'); 
   }
 });
 
-// 4) Funções de ação (expostas no window)
-window.doLogin = async function doLogin(email, password) {
+// 4) Ações básicas
+window.doLogin = async (email, password) => {
   msg('Entrando…');
-  try {
-    const { data, error } = await SB.auth.signInWithPassword({ email, password });
-    if (error) { msg('Erro ao entrar: ' + (error.message || error.error_description || '')); return; }
-    msg('Login OK!');
-  } catch (e) { msg('Falha inesperada no login: ' + (e.message || e)); }
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) msg('Erro ao entrar: ' + (error.message || '')); else msg('Login OK!');
 };
-
-window.doSignup = async function doSignup(email, password) {
+window.doSignup = async (email, password) => {
   msg('Criando conta…');
-  try {
-    const { data, error } = await SB.auth.signUp({ email, password });
-    if (error) { msg('Erro ao criar conta: ' + (error.message || error.error_description || '')); return; }
-    msg('Conta criada! Verificando sessão…');
-  } catch (e) { msg('Falha inesperada no cadastro: ' + (e.message || e)); }
+  const { error } = await supabase.auth.signUp({ email, password });
+  if (error) msg('Erro ao criar conta: ' + (error.message || '')); else msg('Conta criada!');
+};
+window.doLogout = async () => {
+  const { error } = await supabase.auth.signOut();
+  msg(error ? 'Erro ao sair: ' + error.message : 'Saiu.');
 };
 
-window.doLogout = async function doLogout() {
-  try { await SB.auth.signOut(); msg('Saiu.'); } 
-  catch (e) { msg('Erro ao sair: ' + (e.message || e)); }
-};
-
-// 5) Liga botões (use exatamente os IDs do seu index.html)
+// 5) Liga os botões (IDs do seu index)
 const $ = (s) => document.querySelector(s);
-$('#btn-login')?.addEventListener('click', () => {
-  const email = $('#auth-email')?.value?.trim(); 
-  const pass = $('#auth-pass')?.value || '';
+$('#btn-login')?.addEventListener('click', ()=>{
+  const email = $('#auth-email')?.value?.trim(); const pass = $('#auth-pass')?.value || '';
   if (!email || !pass) return msg('Informe e-mail e senha.');
   window.doLogin(email, pass);
 });
-$('#btn-signup')?.addEventListener('click', () => {
-  const email = $('#auth-email')?.value?.trim(); 
-  const pass = $('#auth-pass')?.value || '';
+$('#btn-signup')?.addEventListener('click', ()=>{
+  const email = $('#auth-email')?.value?.trim(); const pass = $('#auth-pass')?.value || '';
   if (!email || !pass) return msg('Informe e-mail e senha.');
   window.doSignup(email, pass);
 });
-$('#btn-logout')?.addEventListener('click', () => window.doLogout());
+$('#btn-logout')?.addEventListener('click', ()=> window.doLogout());
 
 console.log('SB READY', APP.SUPABASE_URL);
-/************* CABEÇALHO SEGURO — FIM *************/
+/************* CABEÇALHO — FIM *************/
