@@ -28,27 +28,36 @@ document.getElementById("form-auth").addEventListener("submit", async (e) => {
   const msg = document.getElementById("auth-msg");
   msg.textContent = "Autenticando...";
 
-  // tenta login
   let { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error && error.status === 400) {
-    // cria conta
     const signup = await supabase.auth.signUp({ email, password });
     if (signup.error) { msg.textContent = "Erro: " + signup.error.message; return; }
-    // tenta login novamente
     ({ data, error } = await supabase.auth.signInWithPassword({ email, password }));
   }
   msg.textContent = error ? ("Erro: " + error.message) : "Pronto!";
 });
 
-// logout
+// --- LOGOUT ROBUSTO ---
+function clearSupabaseStorage() {
+  const prefix = "sb-ttchylymyftizjsqbngp";
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(prefix)) {
+      try { localStorage.removeItem(k); } catch {}
+    }
+  }
+}
+
 document.getElementById("btn-logout").addEventListener("click", async () => {
   try {
     await supabase.auth.signOut();
   } finally {
+    clearSupabaseStorage();
     document.getElementById("nav").classList.add("hidden");
-    show("view-auth"); hide("view-diary"); hide("view-profile");
-    // limpa email do topo
     document.getElementById("nav-user").textContent = "";
+    show("view-auth"); hide("view-diary"); hide("view-profile");
+    // força o client a reavaliar sessão
+    setTimeout(() => location.href = location.href.split("#")[0], 50);
   }
 });
 
@@ -64,12 +73,12 @@ function mountScreensOnce() {
 // reação a login/logout
 supabase.auth.onAuthStateChange(async (_evt, session) => {
   if (session) {
-    // logado
     document.getElementById("nav").classList.remove("hidden");
     mountScreensOnce();
     show("view-diary"); hide("view-auth"); hide("view-profile");
+    document.getElementById("nav-user").textContent = session.user.email;
 
-    // opcional: preencher alvo kcal no resumo com tdee do perfil
+    // alvo kcal no resumo, se existir no perfil
     const { data } = await supabase
       .from("profiles")
       .select("tdee_kcal")
@@ -81,7 +90,6 @@ supabase.auth.onAuthStateChange(async (_evt, session) => {
       if (el) el.textContent = Math.round(data.tdee_kcal);
     }
   } else {
-    // deslogado
     document.getElementById("nav").classList.add("hidden");
     show("view-auth"); hide("view-diary"); hide("view-profile");
   }
