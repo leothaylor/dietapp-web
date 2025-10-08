@@ -1,21 +1,26 @@
+// app.js
 import { mountAuth } from "./components/auth.js";
 import { mountProfile } from "./components/profile.js";
 import { mountDiary } from "./components/diary.js";
 
-const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.$ = (sel) => document.querySelector(sel);
 
-mountAuth({ supabase });
+const supabase = window.supabase.createClient(
+  window.APP_CONFIG.SUPABASE_URL,
+  window.APP_CONFIG.SUPABASE_ANON_KEY
+);
+
+function show(viewId){
+  ["view-auth","view-profile","view-diary"].forEach(id=>{
+    document.getElementById(id).classList.add("hidden");
+  });
+  document.getElementById(viewId).classList.remove("hidden");
+  document.getElementById("nav").classList.toggle("hidden", viewId==="view-auth");
+}
+
+mountAuth({ supabase, onLogin: () => { show("view-diary"); } });
 mountProfile({ supabase });
 mountDiary({ supabase });
 
-// Restaura sessão ao abrir
-(async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    document.getElementById("nav").classList.remove("hidden");
-    document.getElementById("view-auth").classList.add("hidden");
-    document.getElementById("view-diary").classList.remove("hidden");
-    document.getElementById("nav-user").textContent = session.user.email;
-  }
-})();
+// Nav
+$("#
