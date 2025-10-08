@@ -4,16 +4,13 @@ import { bfNavy, bfDeurenberg, mediana, bmr, activityFactor, macrosDefault } fro
 export function mountProfile({ supabase }) {
   const fieldHip = $("#field-hip");
   $("#sex").addEventListener("change", () => {
-    const female = $("#sex").value === "female";
-    fieldHip.classList.toggle("hidden", !female);
+    fieldHip.classList.toggle("hidden", $("#sex").value !== "female");
   });
 
-  // carregar perfil existente
   supabase.auth.onAuthStateChange(async (_evt, session) => {
     if (!session) return;
     const { data, error } = await supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle();
-    if (error) return;
-    if (data) fill(data); else $("#profile-msg").textContent = "Complete seu perfil e salve.";
+    if (!error && data) fill(data); else $("#profile-msg").textContent = "Complete seu perfil e salve.";
     $("#nav-user").textContent = session.user.email;
   });
 
@@ -47,15 +44,14 @@ export function mountProfile({ supabase }) {
     $("#training_freq").value = p.training_freq ?? "3-4";
     $("#goal_type").value = p.goal_type ?? "maintenance";
     $("#goal_pct").value = 0;
-    // exibir cálculos gravados
     setText("o_bf_final", fmt(p.bodyfat_pct,1));
     setText("o_tdee_base", fmt(p.tdee_kcal,0));
-    setText("o_kcal", fmt((p.protein_g||p.carbs_g||p.fat_g) ? p.tdee_kcal : 0,0));
+    setText("o_kcal", fmt(p.tdee_kcal ?? 0,0));
   }
 
   $("#btn-calc").addEventListener("click", () => {
     const f = readForm();
-    if (f.sex !== "male" && f.sex !== "female") { $("#profile-msg").textContent="Escolha sexo."; return; }
+    if (!f.sex) { $("#profile-msg").textContent="Escolha sexo."; return; }
 
     const navy = bfNavy(f);
     const deur = bfDeurenberg(f);
@@ -76,7 +72,6 @@ export function mountProfile({ supabase }) {
     setText("o_kcal", kcal_alvo);
     setText("o_p", prot_g); setText("o_c", carb_g); setText("o_f", gord_g);
 
-    // guarda em dataset para o botão Salvar
     $("#btn-save-profile").dataset.kcal = kcal_alvo;
     $("#btn-save-profile").dataset.bf = bf_final;
     $("#btn-save-profile").dataset.p = prot_g;
@@ -103,7 +98,6 @@ export function mountProfile({ supabase }) {
       updated_at: new Date().toISOString()
     };
 
-    // upsert pelo user_id
     const { error } = await supabase.from("profiles").upsert(updateFields, { onConflict: "user_id" });
     $("#profile-msg").textContent = error ? ("Erro: " + error.message) : "Salvo!";
   });
