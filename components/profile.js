@@ -3,27 +3,36 @@ import { fmt, toNumber, setText } from "../utils/helpers.js";
 import { bfNavy, bfDeurenberg, mediana, bmr, activityFactor, macrosDefault } from "../utils/formulas.js";
 
 export function mountProfile({ supabase }) {
+  // Mostrar/ocultar quadril conforme sexo
   const fieldHip = $("#field-hip");
   $("#sex").addEventListener("change", () => {
     fieldHip.classList.toggle("hidden", $("#sex").value !== "female");
   });
 
-  // Sugerir ajuste de meta com base no tipo
+  // Ajuste automático de goal_pct ao trocar Meta
+  const GOAL_DEFAULT = { cut: -15, maintenance: 0, bulk: 10 };
   $("#goal_type").addEventListener("change", () => {
-    const map = { cut: -15, maintenance: 0, bulk: 10 };
-    $("#goal_pct").value = map[$("#goal_type").value] ?? 0;
+    $("#goal_pct").value = GOAL_DEFAULT[$("#goal_type").value] ?? 0;
+    // Se quiser recalcular na hora, descomente:
+    // $("#btn-calc").click();
   });
 
+  // Carrega perfil ao autenticar
   supabase.auth.onAuthStateChange(async (_evt, session) => {
     if (!session) return;
-    const { data } = await supabase
-      .from("profiles").select("*")
-      .eq("user_id", session.user.id).maybeSingle();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
 
-    if (data) fill(data); else $("#profile-msg").textContent = "Complete seu perfil e salve.";
+    if (!error && data) fill(data);
+    else $("#profile-msg").textContent = "Complete seu perfil e salve.";
+
     $("#nav-user").textContent = session.user.email;
   });
 
+  // Lê os campos do formulário
   function readForm() {
     return {
       name: $("#name").value.trim() || null,
@@ -41,6 +50,7 @@ export function mountProfile({ supabase }) {
     };
   }
 
+  // Preenche com dados do DB
   function fill(p) {
     $("#name").value = p.name ?? "";
     $("#sex").value = p.sex ?? "";
@@ -60,12 +70,18 @@ export function mountProfile({ supabase }) {
     setText("o_kcal", fmt(p.tdee_kcal ?? 0, 0));
   }
 
+  // Cálculos
   $("#btn-calc").addEventListener("click", () => {
     const f = readForm();
     if (!f.sex) { $("#profile-msg").textContent = "Escolha sexo."; return; }
 
-    const navy = bfNavy({ sex: f.sex, height_cm: f.height_cm, neck_cm: f.neck_cm, waist_cm: f.waist_cm, hip_cm: f.hip_cm });
-    const deur = bfDeurenberg({ sex: f.sex, age: f.age, height_cm: f.height_cm, weight_kg: f.weight_kg });
+    const navy = bfNavy({
+      sex: f.sex, height_cm: f.height_cm, neck_cm: f.neck_cm,
+      waist_cm: f.waist_cm, hip_cm: f.hip_cm
+    });
+    const deur = bfDeurenberg({
+      sex: f.sex, age: f.age, height_cm: f.height_cm, weight_kg: f.weight_kg
+    });
     const bf_final = mediana(navy, deur);
 
     const bmrVal = bmr({ sex: f.sex, height_cm: f.height_cm, weight_kg: f.weight_kg, age: f.age });
@@ -84,12 +100,13 @@ export function mountProfile({ supabase }) {
     setText("o_p", prot_g); setText("o_c", carb_g); setText("o_f", gord_g);
 
     $("#btn-save-profile").dataset.kcal = kcal_alvo;
-    $("#btn-save-profile").dataset.bf = bf_final;
-    $("#btn-save-profile").dataset.p = prot_g;
-    $("#btn-save-profile").dataset.c = carb_g;
-    $("#btn-save-profile").dataset.f = gord_g;
+    $("#btn-save-profile").dataset.bf   = bf_final;
+    $("#btn-save-profile").dataset.p    = prot_g;
+    $("#btn-save-profile").dataset.c    = carb_g;
+    $("#btn-save-profile").dataset.f    = gord_g;
   });
 
+  // Salvar
   $("#btn-save-profile").addEventListener("click", async () => {
     const f = readForm();
     const session = (await supabase.auth.getSession()).data.session;
@@ -104,13 +121,16 @@ export function mountProfile({ supabase }) {
       training_freq: f.training_freq, goal_type: f.goal_type,
       tdee_kcal: Number($("#btn-save-profile").dataset.kcal || 0),
       bodyfat_pct: Number($("#btn-save-profile").dataset.bf || 0),
-      protein_g: Number($("#btn-save-profile").dataset.p || 0),
-      carbs_g: Number($("#btn-save-profile").dataset.c || 0),
-      fat_g: Number($("#btn-save-profile").dataset.f || 0),
+      protein_g:  Number($("#btn-save-profile").dataset.p  || 0),
+      carbs_g:    Number($("#btn-save-profile").dataset.c  || 0),
+      fat_g:      Number($("#btn-save-profile").dataset.f  || 0),
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase.from("profiles").upsert(updateFields, { onConflict: "user_id" });
+    const { error } = await supabase
+      .from("profiles")
+      .upsert(updateFields, { onConflict: "user_id" });
+
     $("#profile-msg").textContent = error ? ("Erro: " + error.message) : "Salvo!";
   });
 }
