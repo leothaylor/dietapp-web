@@ -3,28 +3,27 @@ import { fmt, toNumber, setText } from "../utils/helpers.js";
 import { bfNavy, bfDeurenberg, mediana, bmr, activityFactor, macrosDefault } from "../utils/formulas.js";
 
 export function mountProfile({ supabase }) {
-  // Mostra campo quadril só para mulheres
   const fieldHip = $("#field-hip");
   $("#sex").addEventListener("change", () => {
     fieldHip.classList.toggle("hidden", $("#sex").value !== "female");
   });
 
-  // Carrega perfil ao autenticar
+  // Sugerir ajuste de meta com base no tipo
+  $("#goal_type").addEventListener("change", () => {
+    const map = { cut: -15, maintenance: 0, bulk: 10 };
+    $("#goal_pct").value = map[$("#goal_type").value] ?? 0;
+  });
+
   supabase.auth.onAuthStateChange(async (_evt, session) => {
     if (!session) return;
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .maybeSingle();
+    const { data } = await supabase
+      .from("profiles").select("*")
+      .eq("user_id", session.user.id).maybeSingle();
 
-    if (!error && data) fill(data);
-    else $("#profile-msg").textContent = "Complete seu perfil e salve.";
-
+    if (data) fill(data); else $("#profile-msg").textContent = "Complete seu perfil e salve.";
     $("#nav-user").textContent = session.user.email;
   });
 
-  // Lê os campos do formulário
   function readForm() {
     return {
       name: $("#name").value.trim() || null,
@@ -35,14 +34,13 @@ export function mountProfile({ supabase }) {
       neck_cm: Number($("#neck_cm").value),
       waist_cm: Number($("#waist_cm").value),
       hip_cm: toNumber($("#hip_cm").value),
-      activity_routine: $("#activity_routine").value,  // nome padronizado no DB
+      activity_routine: $("#activity_routine").value,
       training_freq: $("#training_freq").value,
       goal_type: $("#goal_type").value,
       goal_pct: Number($("#goal_pct").value || 0),
     };
   }
 
-  // Preenche o form com dados do DB
   function fill(p) {
     $("#name").value = p.name ?? "";
     $("#sex").value = p.sex ?? "";
@@ -62,18 +60,12 @@ export function mountProfile({ supabase }) {
     setText("o_kcal", fmt(p.tdee_kcal ?? 0, 0));
   }
 
-  // Cálculo (BF, BMR, TDEE, macros)
   $("#btn-calc").addEventListener("click", () => {
     const f = readForm();
     if (!f.sex) { $("#profile-msg").textContent = "Escolha sexo."; return; }
 
-    const navy = bfNavy({
-      sex: f.sex, height_cm: f.height_cm, neck_cm: f.neck_cm,
-      waist_cm: f.waist_cm, hip_cm: f.hip_cm
-    });
-    const deur = bfDeurenberg({
-      sex: f.sex, age: f.age, height_cm: f.height_cm, weight_kg: f.weight_kg
-    });
+    const navy = bfNavy({ sex: f.sex, height_cm: f.height_cm, neck_cm: f.neck_cm, waist_cm: f.waist_cm, hip_cm: f.hip_cm });
+    const deur = bfDeurenberg({ sex: f.sex, age: f.age, height_cm: f.height_cm, weight_kg: f.weight_kg });
     const bf_final = mediana(navy, deur);
 
     const bmrVal = bmr({ sex: f.sex, height_cm: f.height_cm, weight_kg: f.weight_kg, age: f.age });
@@ -98,7 +90,6 @@ export function mountProfile({ supabase }) {
     $("#btn-save-profile").dataset.f = gord_g;
   });
 
-  // Salvar no DB (upsert por user_id)
   $("#btn-save-profile").addEventListener("click", async () => {
     const f = readForm();
     const session = (await supabase.auth.getSession()).data.session;
@@ -119,10 +110,7 @@ export function mountProfile({ supabase }) {
       updated_at: new Date().toISOString()
     };
 
-    const { error } = await supabase
-      .from("profiles")
-      .upsert(updateFields, { onConflict: "user_id" });
-
+    const { error } = await supabase.from("profiles").upsert(updateFields, { onConflict: "user_id" });
     $("#profile-msg").textContent = error ? ("Erro: " + error.message) : "Salvo!";
   });
 }
