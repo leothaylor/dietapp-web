@@ -1,176 +1,149 @@
-// app.js
-import { $id, setText } from './utils/helpers.js';
+// app.js – foco: autenticação estável e troca de telas
 
-// --- Supabase ---
+// ===== Supabase =====
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    persistSession: true,
+    persistSession: true,       // guarda sessão no localStorage
     autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
+    detectSessionInUrl: false,  // não usamos magic link na UI
+  },
 });
 
-// --- Views / elementos globais ---
-const views = {
-  auth: $id('view-auth'),
-  profile: $id('view-profile'),
-  diary: $id('view-diary'),
-};
+// ===== Util =====
+const $ = (sel) => document.querySelector(sel);
+const setText = (sel, txt = "") => { const el = $(sel); if (el) el.textContent = txt; };
 
-const nav = {
-  bar: $id('nav'),
-  btnDiary: $id('nav-diario'),
-  btnProfile: $id('nav-perfil'),
-  user: $id('nav-user'),
-  logout: $id('btn-logout'),
-};
+// Regiões/telas
+const nav = $("#nav");
+const viewAuth   = $("#view-auth");
+const viewDiary  = $("#view-diary");
+const viewProfil = $("#view-profile");
 
-const auth = {
-  email: $id('auth-email'),
-  pass:  $id('auth-pass'),
-  login: $id('btn-login'),
-  signup:$id('btn-signup'),
-  msg:   $id('auth-msg'),
-};
+// Campos e botões de auth
+const emailEl = $("#auth-email");
+const passEl  = $("#auth-pass");
+const msgEl   = $("#auth-msg");
+const btnLogin = $("#btn-login");    // <button id="btn-login">Entrar</button>
+const btnSign  = $("#btn-signup");   // <button id="btn-signup">Criar conta</button>
+const btnLogout = $("#btn-logout");
 
-// util: troca de telas
-function show(view) {
-  Object.values(views).forEach(v => v.classList.add('hidden'));
-  view.classList.remove('hidden');
-}
-
-// habilita/desabilita botões de auth
-function lockAuth(locked) {
-  auth.login.disabled  = locked;
-  auth.signup.disabled = locked;
-  const t = locked ? 'Entrando…' : '';
-  setText('auth-msg', t);
-}
-
-// atualiza topo
-async function renderTopBar() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    nav.bar.classList.remove('hidden');
-    nav.user.textContent = user.email ?? '';
+// ===== Render UI por sessão =====
+function render(session) {
+  if (session && session.user) {
+    // logado
+    nav.classList.remove("hidden");
+    viewAuth.classList.add("hidden");
+    // escolha a tela inicial que quer mostrar:
+    viewDiary.classList.remove("hidden");
+    viewProfil.classList.add("hidden");
+    setText("#nav-user", session.user.email || "");
+    setText("#auth-msg", "");
   } else {
-    nav.bar.classList.add('hidden');
-    nav.user.textContent = '';
+    // deslogado
+    nav.classList.add("hidden");
+    viewAuth.classList.remove("hidden");
+    viewDiary.classList.add("hidden");
+    viewProfil.classList.add("hidden");
+    setText("#nav-user", "");
   }
 }
 
-// fluxo pós login
-async function afterLogin() {
-  await renderTopBar();
-  // escolha padrão: abrir Perfil para preencher metas na 1ª vez
-  show(views.profile);
-}
-
-// --- Auth handlers ---
-auth.login.addEventListener('click', async () => {
-  lockAuth(true);
-  auth.msg.classList.remove('error');
+// ===== Eventos Auth =====
+async function doLogin() {
   try {
-    const email = auth.email.value.trim();
-    const password = auth.pass.value;
+    setText("#auth-msg", "Entrando...");
+    const email = (emailEl.value || "").trim();
+    const password = passEl.value || "";
+
     if (!email || !password) {
-      setText('auth-msg', 'Informe e-mail e senha.');
+      setText("#auth-msg", "Preencha e-mail e senha.");
       return;
     }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setText('auth-msg', error.message);
-      auth.msg.classList.add('error');
+      setText("#auth-msg", "Erro ao entrar: " + (error.message || error));
       return;
     }
-    await afterLogin();
-  } catch (e) {
-    setText('auth-msg', e.message || 'Falha ao entrar.');
-    auth.msg.classList.add('error');
-  } finally {
-    lockAuth(false);
-  }
-});
 
-auth.signup.addEventListener('click', async () => {
-  lockAuth(true);
-  auth.msg.classList.remove('error');
+    // sessão aplicada pelo SDK; garantimos render imediatamente
+    const { data: { session } } = await supabase.auth.getSession();
+    render(session);
+    setText("#auth-msg", "");
+  } catch (err) {
+    setText("#auth-msg", "Falha inesperada ao entrar: " + err.message);
+  }
+}
+
+async function doSignup() {
   try {
-    const email = auth.email.value.trim();
-    const password = auth.pass.value;
+    setText("#auth-msg", "Criando conta...");
+    const email = (emailEl.value || "").trim();
+    const password = passEl.value || "";
+
     if (!email || !password) {
-      setText('auth-msg', 'Informe e-mail e senha (mínimo 6).');
+      setText("#auth-msg", "Preencha e-mail e senha.");
       return;
     }
-    // cria conta
+
+    // cria conta (com Confirm Email DESLIGADO no Supabase)
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
-      setText('auth-msg', error.message);
-      auth.msg.classList.add('error');
+      // Se usuário já existe, tentamos login direto
+      if (String(error.message || "").toLowerCase().includes("already registered")) {
+        return doLogin();
+      }
+      setText("#auth-msg", "Erro ao criar conta: " + error.message);
       return;
     }
-    // com “Confirm email: OFF”, normalmente já vem sessão.
-    // Se não vier, tenta logar na sequência.
-    const { data: sess } = await supabase.auth.getSession();
-    if (!sess.session) {
-      const r = await supabase.auth.signInWithPassword({ email, password });
-      if (r.error) {
-        setText('auth-msg', r.error.message);
-        auth.msg.classList.add('error');
-        return;
-      }
-    }
-    await afterLogin();
-  } catch (e) {
-    setText('auth-msg', e.message || 'Falha ao criar conta.');
-    auth.msg.classList.add('error');
-  } finally {
-    lockAuth(false);
-  }
-});
 
-// logout robusto
-nav.logout.addEventListener('click', async () => {
+    // Em alguns workspaces o signUp já devolve sessão; garantimos com getSession
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      // Se confirm e-mail estivesse ON, cairia aqui — mas no seu projeto está OFF
+      setText("#auth-msg", "Conta criada. Tente entrar com seu e-mail/senha.");
+      return;
+    }
+    render(session);
+    setText("#auth-msg", "");
+  } catch (err) {
+    setText("#auth-msg", "Falha inesperada ao criar conta: " + err.message);
+  }
+}
+
+async function doLogout() {
   try {
     await supabase.auth.signOut();
-  } finally {
-    try {
-      // limpa qualquer cache local da SDK (chaves começam com 'sb-')
-      Object.keys(localStorage).forEach(k => {
-        if (k.startsWith('sb-')) localStorage.removeItem(k);
-      });
-    } catch {}
-    await renderTopBar();
-    show(views.auth);
-  }
+  } catch {}
+  // limpamos mensagens/inputs e render deslogado
+  if (emailEl) emailEl.value = "";
+  if (passEl)  passEl.value  = "";
+  setText("#auth-msg", "");
+  render(null);
+}
+
+// ===== Navegação topo =====
+$("#nav-diario")?.addEventListener("click", () => {
+  viewDiary.classList.remove("hidden");
+  viewProfil.classList.add("hidden");
+});
+$("#nav-perfil")?.addEventListener("click", () => {
+  viewDiary.classList.add("hidden");
+  viewProfil.classList.remove("hidden");
 });
 
-// navegação topo
-nav.btnDiary?.addEventListener('click', () => show(views.diary));
-nav.btnProfile?.addEventListener('click', () => show(views.profile));
+// Botões
+btnLogin?.addEventListener("click", (e) => { e.preventDefault(); doLogin(); });
+btnSign ?.addEventListener("click", (e) => { e.preventDefault(); doSignup(); });
+btnLogout?.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
 
-// troca de auth state → decide tela
-supabase.auth.onAuthStateChange(async (_evt, session) => {
-  await renderTopBar();
-  if (session) {
-    // se já logado, mantemos a tela atual; se estiver no auth, pula pro perfil
-    if (!views.profile.classList.contains('hidden') || !views.diary.classList.contains('hidden')) {
-      return;
-    }
-    show(views.profile);
-  } else {
-    show(views.auth);
-  }
-});
-
-// boot
-(async function start() {
-  await renderTopBar();
+// ===== Boot =====
+(async () => {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session) {
-    show(views.profile);
-  } else {
-    show(views.auth);
-  }
+  render(session);
+
+  supabase.auth.onAuthStateChange((_event, newSession) => {
+    render(newSession);
+  });
 })();
