@@ -4,7 +4,7 @@ export function mountAuth({ supabase }) {
   const form = $("#form-auth");
   const msg = $("#auth-msg");
 
-  function ui(msgText="") { msg.textContent = msgText; }
+  function ui(text=""){ msg.textContent = text; }
 
   async function goHome() {
     hide("view-auth"); show("nav"); show("view-diary");
@@ -12,10 +12,9 @@ export function mountAuth({ supabase }) {
     $("#nav-user").textContent = user?.email ?? "";
   }
 
-  // Se já está logado, entra direto
+  // Se já estava logado, entra
   supabase.auth.getSession().then(({ data }) => { if (data.session) goHome(); });
-
-  // Também reage a mudanças de sessão (signup/login/logoff)
+  // Reage a mudanças de sessão
   supabase.auth.onAuthStateChange((_evt, sess) => { if (sess) goHome(); });
 
   form.addEventListener("submit", async (e) => {
@@ -24,22 +23,20 @@ export function mountAuth({ supabase }) {
     const password = $("#auth-pass").value.trim();
     ui("Autenticando...");
 
-    // 1) tenta login
+    // tenta login
     const { data: sIn, error: eIn } = await supabase.auth.signInWithPassword({ email, password });
     if (!eIn && sIn?.session) { ui(""); return goHome(); }
 
-    // 2) se falhou, tenta criar conta
+    // tenta signup
     const { data: sUp, error: eUp } = await supabase.auth.signUp({ email, password });
     if (eUp) { ui("Erro no cadastro: " + eUp.message); return; }
 
-    // 3) se o projeto NÃO exige confirmação, já teremos sessão; se exigir, não teremos
     if (sUp?.session) { ui(""); return goHome(); }
 
-    // 4) fallback: tenta logar de novo (cobre casos em que o painel já desativou confirmação)
+    // se o projeto já não exige confirmação, este novo login pega a sessão
     const { data: sIn2, error: eIn2 } = await supabase.auth.signInWithPassword({ email, password });
     if (!eIn2 && sIn2?.session) { ui(""); return goHome(); }
 
-    // 5) última mensagem (quando email confirmation ainda está ATIVA)
     ui("Conta criada. Se a confirmação de e-mail estiver ligada, verifique seu e-mail e tente entrar.");
   });
 
