@@ -1,123 +1,141 @@
 // components/profile.js
-import { bfNavy, bfDeurenberg, mediana, bmr, activityFactor, macrosDefault, toNumber, fmt } from "../utils/helpers.js";
-// ↑ se você ainda não tem helpers, remova essa linha e troque pelos cálculos que já usava.
-// Abaixo deixei cálculos simples inline para evitar dependência:
+const $ = (sel) => document.querySelector(sel);
 
-function calcAll() {
-  // pegue valores do formulário
-  const sex = $("#sex").value;
-  const age = +$("#age").value || 0;
-  const height = +$("#height_cm").value || 0;
-  const neck = +$("#neck_cm").value || 0;
-  const waist = +$("#waist_cm").value || 0;
-  const weight = +$("#weight_kg").value || 0;
-  const routine = $("#activity_routine").value;
-  const goalPct = +$("#goal_pct").value || 0;
-  const trainings = $("#training_freq").value;
+// fórmulas simples e estáveis
+function toNumber(v) { const n = Number(String(v).replace(",", ".")); return isFinite(n) ? n : 0; }
 
-  // cálculos MUITO simplificados apenas para não travar:
-  const bfN = Math.max(0, Math.min(60, 495/(1.0324 - 0.19077*Math.log10(waist-neck||1) + 0.15456*Math.log10(height||1)) - 450 || 0)); // navy aprox
-  const bfD = Math.max(0, Math.min(60, 1.2*(weight/((height/100)**2)) + 0.23*age - 16.2 - (sex==="male"?10.8:0)));
-  const bfFinal = Math.round((bfN + bfD)/2 *10)/10;
-
-  const bmrEst = Math.round((sex==="male" ? (10*weight + 6.25*height - 5*age + 5) : (10*weight + 6.25*height - 5*age -161)));
-  const af = ({"sedentary":1.2,"light":1.375,"moderate":1.55,"active":1.725,"very_active":1.9}[routine]||1.2);
-  const tdeeBase = Math.round(bmrEst * af);
-  const kcalTarget = Math.round(tdeeBase * (1 + goalPct/100));
-  const protein = Math.round(weight*2); // g
-  const fat = Math.round(weight*0.9);   // g
-  const carbs = Math.max(0, Math.round((kcalTarget - (protein*4 + fat*9))/4));
-
-  // escreve na tela
-  $("#o_bf_navy").textContent = bfN ? `${bfN.toFixed(1)}` : "—";
-  $("#o_bf_deur").textContent = bfD ? `${bfD.toFixed(1)}` : "—";
-  $("#o_bf_final").textContent = bfFinal ? `${bfFinal.toFixed(1)}` : "—";
-  $("#o_bmr").textContent = bmrEst ? `${bmrEst}` : "—";
-  $("#o_tdee_base").textContent = tdeeBase ? `${tdeeBase}` : "—";
-  $("#o_kcal").textContent = isFinite(kcalTarget) ? `${kcalTarget}` : "—";
-  $("#o_p").textContent = isFinite(protein) ? `${protein}` : "—";
-  $("#o_c").textContent = isFinite(carbs) ? `${carbs}` : "—";
-  $("#o_f").textContent = isFinite(fat) ? `${fat}` : "—";
-
-  // devolve pra salvar
-  return { bmrEst, tdeeBase, kcalTarget, protein, carbs, fat, bfN, bfD, bfFinal };
+function bfNavy({ sex, neck_cm, waist_cm, hip_cm, height_cm }) {
+  const h = toNumber(height_cm), n = toNumber(neck_cm), w = toNumber(waist_cm), hp = toNumber(hip_cm);
+  if (sex === "female") {
+    if (w <= 0 || n <= 0 || hp <= 0 || h <= 0) return 0;
+    return Math.max(0, 163.205 * Math.log10(w + hp - n) - 97.684 * Math.log10(h) - 78.387);
+  } else {
+    if (w <= 0 || n <= 0 || h <= 0) return 0;
+    return Math.max(0, 86.010 * Math.log10(w - n) - 70.041 * Math.log10(h) + 36.76);
+  }
+}
+function bfDeurenberg({ age, sex, weight_kg, height_cm }) {
+  const bmi = toNumber(weight_kg) / ((toNumber(height_cm)/100)**2 || 1);
+  const s = sex === "male" ? 1 : 0;
+  return Math.max(0, 1.2*bmi + 0.23*toNumber(age) - 10.8*s - 5.4);
+}
+function bmr({ sex, weight_kg, height_cm, age }) {
+  const w = toNumber(weight_kg), h = toNumber(height_cm), a = toNumber(age);
+  return Math.round(sex === "male" ? (10*w + 6.25*h - 5*a + 5) : (10*w + 6.25*h - 5*a - 161));
+}
+function activityFactor({ activity_routine, training_freq }) {
+  const tf = String(training_freq||"0");
+  const base =
+    activity_routine === "very_active" ? 1.7 :
+    activity_routine === "active"      ? 1.55 :
+    activity_routine === "moderate"    ? 1.45 :
+    activity_routine === "light"       ? 1.35 : 1.25;
+  const bonus = (tf === "5+" ? 0.10 : tf === "3-4" ? 0.07 : tf === "1-2" ? 0.04 : 0);
+  return +(base + bonus).toFixed(2);
 }
 
-const $ = (s)=>document.querySelector(s);
+function calcTargets(p) {
+  const bmrKcal = bmr(p);
+  const af = activityFactor(p);
+  const tdee = Math.round(bmrKcal * af);
+  const adj  = 1 + (toNumber(p.goal_pct)/100);
+  const kcal = Math.max(1000, Math.round(tdee * adj));
+  // macros simples: P=2g/kg, F=0.8g/kg, resto carbo
+  const prot = Math.round(toNumber(p.weight_kg) * 2);
+  const fat  = Math.round(toNumber(p.weight_kg) * 0.8);
+  const carbs= Math.max(0, Math.round((kcal - prot*4 - fat*9)/4));
+  return { bmrKcal, tdee, kcal, prot, carbs, fat };
+}
 
-export function mountProfile(supabase){
-  // listeners de UI (uma única vez)
-  if (!mountProfile._wired) {
-    $("#btn-calc").onclick = calcAll;
+export async function mountProfile({ supabase, session }) {
+  const uid = session.user.id;
 
-    $("#btn-save-profile").onclick = async () => {
-      $("#profile-msg").textContent = "Salvando...";
-      try {
-        const session = (await supabase.auth.getSession()).data.session;
-        if (!session) throw new Error("Sem sessão");
+  // mostra campo quadril só para mulher
+  const fieldHip = $("#field-hip");
+  $("#sex")?.addEventListener("change", ()=>{
+    const female = $("#sex").value === "female";
+    fieldHip.classList.toggle("hidden", !female);
+  });
 
-        const user_id = session.user.id;
+  // carregar perfil
+  async function loadProfile() {
+    const { data, error } = await supabase.from("profiles").select("*").eq("user_id", uid).maybeSingle();
+    if (error) return;
+    const p = data || {};
+    // preencher
+    $("#name").value = p.name || "";
+    $("#sex").value = p.sex || "";
+    $("#age").value = p.age ?? "";
+    $("#height_cm").value = p.height_cm ?? "";
+    $("#weight_kg").value = p.weight_kg ?? "";
+    $("#neck_cm").value = p.neck_cm ?? "";
+    $("#waist_cm").value = p.waist_cm ?? "";
+    $("#hip_cm").value = p.hip_cm ?? "";
+    $("#activity_routine").value = p.activity_routine || "sedentary";
+    $("#training_freq").value = p.training_freq || "0";
+    $("#goal_type").value = p.goal_type || "maintenance";
+    $("#goal_pct").value = p.goal_pct ?? 0;
 
-        const out = calcAll(); // garante cálculo antes de gravar
-
-        const payload = {
-          user_id,
-          name: $("#name").value || null,
-          sex: $("#sex").value || null,
-          age: +$("#age").value || null,
-          height_cm: +$("#height_cm").value || null,
-          neck_cm: +$("#neck_cm").value || null,
-          waist_cm: +$("#waist_cm").value || null,
-          hip_cm: null, // não usamos agora
-          activity_routine: $("#activity_routine").value || "sedentary",
-          training_freq: $("#training_freq").value || "0",
-          goal_type: $("#goal_type").value || "cut",
-          goal_pct: +$("#goal_pct").value || 0,
-          tdee_kcal: out.kcalTarget,
-          bodyfat_pct: out.bfFinal,
-          protein_g: out.protein,
-          carbs_g: out.carbs,
-          fat_g: out.fat
-        };
-
-        const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
-        if (error) throw error;
-
-        $("#profile-msg").textContent = "Salvo!";
-        setTimeout(()=> $("#profile-msg").textContent = "", 1500);
-      } catch (e) {
-        $("#profile-msg").textContent = `Erro: ${e.message}`;
-      }
-    };
-
-    mountProfile._wired = true;
+    // mostra cálculos se já houver
+    renderCalc(p);
   }
 
-  // carregar perfil do banco
-  (async ()=>{
-    try{
-      const session = (await supabase.auth.getSession()).data.session;
-      if(!session) return;
-      const { data, error } = await supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle();
-      if (error) throw error;
-      if (!data) return;
+  function readForm() {
+    return {
+      user_id: uid,
+      name: $("#name").value.trim(),
+      sex: $("#sex").value,
+      age: toNumber($("#age").value),
+      height_cm: toNumber($("#height_cm").value),
+      weight_kg: toNumber($("#weight_kg").value),
+      neck_cm: toNumber($("#neck_cm").value),
+      waist_cm: toNumber($("#waist_cm").value),
+      hip_cm: toNumber($("#hip_cm").value),
+      activity_routine: $("#activity_routine").value,
+      training_freq: $("#training_freq").value,
+      goal_type: $("#goal_type").value,
+      goal_pct: toNumber($("#goal_pct").value),
+    };
+  }
 
-      $("#name").value = data.name ?? "";
-      $("#sex").value = data.sex ?? "";
-      $("#age").value = data.age ?? "";
-      $("#height_cm").value = data.height_cm ?? "";
-      $("#neck_cm").value = data.neck_cm ?? "";
-      $("#waist_cm").value = data.waist_cm ?? "";
-      $("#activity_routine").value = data.activity_routine ?? "sedentary";
-      $("#training_freq").value = data.training_freq ?? "0";
-      $("#goal_type").value = data.goal_type ?? "cut";
-      $("#goal_pct").value = data.goal_pct ?? -15;
+  function renderCalc(p) {
+    const navy = Math.round(bfNavy(p)*10)/10;
+    const deur = Math.round(bfDeurenberg(p)*10)/10;
+    const bf   = Math.round(((navy||0)+(deur||0))/2 *10)/10;
+    const { bmrKcal, tdee, kcal, prot, carbs, fat } = calcTargets(p);
 
-      // re-calcula pra preencher os cards
-      calcAll();
-    }catch(e){
-      console.error(e);
-      $("#profile-msg").textContent = `Erro ao carregar: ${e.message}`;
-    }
-  })();
+    $("#o_bf_navy").textContent = isFinite(navy)?navy:"—";
+    $("#o_bf_deur").textContent = isFinite(deur)?deur:"—";
+    $("#o_bf_final").textContent= isFinite(bf)?bf:"—";
+    $("#o_bmr").textContent     = isFinite(bmrKcal)?bmrKcal:"—";
+    $("#o_tdee_base").textContent= isFinite(tdee)?tdee:"—";
+    $("#o_kcal").textContent    = isFinite(kcal)?kcal:"—";
+    $("#o_p").textContent       = isFinite(prot)?prot:"—";
+    $("#o_c").textContent       = isFinite(carbs)?carbs:"—";
+    $("#o_f").textContent       = isFinite(fat)?fat:"—";
+  }
+
+  $("#btn-calc")?.addEventListener("click", (e)=>{
+    e.preventDefault();
+    const p = readForm();
+    renderCalc(p);
+  });
+
+  $("#goal_type")?.addEventListener("change", ()=>{
+    const m = $("#goal_type").value;
+    $("#goal_pct").value = (m==="cut") ? -15 : (m==="bulk" ? 12 : 0);
+    renderCalc(readForm());
+  });
+
+  $("#btn-save-profile")?.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    const p = readForm();
+    renderCalc(p);
+    $("#profile-msg").textContent = "Salvando...";
+    const { error } = await supabase.from("profiles").upsert(p, { onConflict: "user_id" });
+    $("#profile-msg").textContent = error ? ("Erro: "+error.message) : "Salvo!";
+    setTimeout(()=>$("#profile-msg").textContent="", 1800);
+  });
+
+  await loadProfile();
 }
