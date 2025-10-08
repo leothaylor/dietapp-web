@@ -1,119 +1,146 @@
 // components/diary.js
-import { fmt, setText, toNumber } from "../utils/helpers.js";
+const $ = (s)=>document.querySelector(s);
 
-export async function mountDiary(supabase) {
-  const dateInput     = document.getElementById("diary-date");
-  const mealSel       = document.getElementById("meal-slot");
-  const qInput        = document.getElementById("food-search");
-  const foodSelect    = document.getElementById("food-select");
-  const servingsInput = document.getElementById("servings");
-  const insertBtn     = document.getElementById("btn-insert-entry");
-  const tbody         = document.querySelector("#entries-table tbody");
+let wired = false;
 
-  dateInput.value = new Date().toISOString().slice(0,10);
-
-  // habilita/desabilita porções conforme há seleção
-  const refreshServingsState = () => {
-    servingsInput.disabled = !foodSelect.value;
-  };
-  refreshServingsState();
-
-  // Busca foods (usa coluna gerada search_name)
-  async function searchFoods() {
-    const q = qInput.value.trim().toLowerCase();
-    foodSelect.innerHTML = "";
-    if (!q) { refreshServingsState(); return; }
-
-    const { data, error } = await supabase
-      .from("foods")
-      .select("id,name,brand,serving_desc,serving_g,energy_kcal_100g,protein_g_100g,carbs_g_100g,fat_g_100g")
-      .ilike("search_name", `%${q}%`)
-      .order("name", { ascending: true })
-      .limit(20);
-
-    if (error) { console.error(error); refreshServingsState(); return; }
-
-    for (const f of data) {
-      const opt = document.createElement("option");
-      opt.value = f.id;
-      opt.textContent = `${f.name}${f.brand ? " · " + f.brand : ""} — ${f.serving_desc || f.serving_g + " g"}`;
-      opt.dataset.servingG = f.serving_g || 0;
-      opt.dataset.k100 = f.energy_kcal_100g || 0;
-      opt.dataset.p100 = f.protein_g_100g || 0;
-      opt.dataset.c100 = f.carbs_g_100g || 0;
-      opt.dataset.f100 = f.fat_g_100g || 0;
-      foodSelect.appendChild(opt);
-    }
-    refreshServingsState();
+export function mountDiary(supabase){
+  if (!wired){
+    // buscar conforme digita
+    $("#food-search").addEventListener("input", ()=> searchFoods(supabase));
+    // inserir
+    $("#btn-insert-entry").addEventListener("click", ()=> insertEntry(supabase));
+    // data padrão
+    $("#diary-date").value = new Date().toISOString().slice(0,10);
+    wired = true;
   }
 
-  qInput.addEventListener("input", searchFoods);
-  foodSelect.addEventListener("change", refreshServingsState);
+  // carrega lista do dia
+  listEntries(supabase);
+  // e tenta popular alimentos se o campo não estiver vazio
+  searchFoods(supabase);
+}
 
-  // Inserir
-  insertBtn.addEventListener("click", async () => {
-    const foodId   = foodSelect.value;
-    const servings = toNumber(servingsInput.value);
-    if (!foodId || servings <= 0) {
-      alert("Escolha um alimento e informe porções > 0");
-      return;
-    }
-    const user = (await supabase.auth.getUser()).data.user;
-    const date = dateInput.value;
-    const meal = mealSel.value;
+async function searchFoods(supabase){
+  const q = $("#food-search").value.trim();
 
-    // calcula macros por porção (usando 100 g)
-    const opt = foodSelect.selectedOptions[0];
-    const k = (+opt.dataset.k100 || 0) * (servings * (+opt.dataset.servingG || 0)) / 100;
-    const p = (+opt.dataset.p100 || 0) * (servings * (+opt.dataset.servingG || 0)) / 100;
-    const c = (+opt.dataset.c100 || 0) * (servings * (+opt.dataset.servingG || 0)) / 100;
-    const f = (+opt.dataset.f100 || 0) * (servings * (+opt.dataset.servingG || 0)) / 100;
+  const sel = $("#food-select");
+  sel.innerHTML = `<option value="">Buscando...</option>`;
+
+  const query = supabase.from("foods").select("id,name,serving_desc,serving_g").order("name");
+  if (q) query.ilike("name", `%${q}%`);
+  const { data, error } = await query.limit(50);
+
+  if (error){
+    sel.innerHTML = `<option value="">Erro ao buscar</option>`;
+    console.error(error);
+    return;
+  }
+  if (!data?.length){
+    sel.innerHTML = `<option value="">Nenhum alimento</option>`;
+    return;
+  }
+
+  sel.innerHTML = data.map(f=>(
+    `<option value="${f.id}" data-sg="${f.serving_g||0}">${f.name}${f.serving_desc?` — ${f.serving_desc}`:""}</option>`
+  )).join("");
+}
+
+async function insertEntry(supabase){
+  const foodId = $("#food-select").value;
+  const servings = parseFloat($("#servings").value||"1");
+  const meal = $("#meal-slot").value;
+  const date = $("#diary-date").value;
+
+  if (!foodId || !(servings>0)){
+    alert("Escolha um alimento e informe porções > 0");
+    return;
+  }
+
+  try{
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) throw new Error("Sem sessão");
+
+    // pega macros do alimento
+    const { data: foods } = await supabase.from("foods")
+      .select("energy_kcal_100g,protein_g_100g,carbs_g_100g,fat_g_100g,serving_g")
+      .eq("id", foodId).limit(1);
+
+    if (!foods?.length) throw new Error("Alimento não encontrado");
+
+    const f = foods[0];
+    const sg = f.serving_g || 100; // default
+
+    // converte 100g -> porção
+    const factor = (sg/100) * servings;
+    const kcal = Math.round(f.energy_kcal_100g * factor);
+    const p = Math.round(f.protein_g_100g * factor);
+    const c = Math.round(f.carbs_g_100g * factor);
+    const g = Math.round(f.fat_g_100g * factor);
 
     const { error } = await supabase.from("entries").insert({
-      user_id: user.id, date, meal_slot: meal, food_id: foodId,
-      servings, kcal: k, protein_g: p, carbs_g: c, fat_g: f
+      user_id: session.user.id, date, meal_slot: meal, food_id: foodId,
+      servings, kcal, protein_g: p, carbs_g: c, fat_g: g
     });
 
-    if (error) { alert("Erro ao inserir: " + error.message); return; }
+    if (error) throw error;
 
-    // limpa somente porções
-    servingsInput.value = "1";
-    await loadEntries(); // atualiza tabela
-  });
+    // recarrega tabela
+    await listEntries(supabase);
+    $("#servings").value = "1";
+  }catch(e){
+    alert(`Erro ao inserir: ${e.message}`);
+  }
+}
 
-  // Carregar listagem do dia
-  async function loadEntries() {
-    const user = (await supabase.auth.getUser()).data.user;
-    const { data, error } = await supabase
-      .from("entries")
-      .select("meal_slot, servings, kcal, protein_g, carbs_g, fat_g, foods(name)")
-      .eq("user_id", user.id)
-      .eq("date", dateInput.value)
-      .order("timestamp", { ascending: true });
+async function listEntries(supabase){
+  const date = $("#diary-date").value;
+  const tbody = $("#entries-table tbody");
+  tbody.innerHTML = "<tr><td colspan='7'>Carregando...</td></tr>";
 
-    if (error) { console.error(error); return; }
+  const session = (await supabase.auth.getSession()).data.session;
+  if (!session) return;
 
-    tbody.innerHTML = "";
-    let sk=0, sp=0, sc=0, sf=0;
-    for (const r of data) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${r.meal_slot}</td>
-        <td>${r.foods?.name || "—"}</td>
-        <td>${fmt(r.servings)}</td>
-        <td>${fmt(r.kcal)}</td>
-        <td>${fmt(r.protein_g)}</td>
-        <td>${fmt(r.carbs_g)}</td>
-        <td>${fmt(r.fat_g)}</td>`;
-      tbody.appendChild(tr);
-      sk+=r.kcal||0; sp+=r.protein_g||0; sc+=r.carbs_g||0; sf+=r.fat_g||0;
-    }
-    setText("#sum-kcal", fmt(sk));
-    setText("#sum-p", fmt(sp));
-    setText("#sum-c", fmt(sc));
-    setText("#sum-f", fmt(sf));
+  const { data, error } = await supabase
+    .from("entries")
+    .select("meal_slot, foods(name), servings, kcal, protein_g, carbs_g, fat_g")
+    .eq("user_id", session.user.id)
+    .eq("date", date)
+    .order("meal_slot");
+
+  if (error){
+    tbody.innerHTML = "<tr><td colspan='7'>Erro</td></tr>";
+    console.error(error);
+    return;
+  }
+  if (!data?.length){
+    tbody.innerHTML = "<tr><td colspan='7'>Sem lançamentos</td></tr>";
+    setDaySummary({kcal:0,p:0,c:0,g:0});
+    return;
   }
 
-  dateInput.addEventListener("change", loadEntries);
-  await loadEntries();
+  let sumK=0,sumP=0,sumC=0,sumG=0;
+  tbody.innerHTML = data.map(r=>{
+    sumK+=r.kcal||0; sumP+=r.protein_g||0; sumC+=r.carbs_g||0; sumG+=r.fat_g||0;
+    return `<tr>
+      <td>${ptMeal(r.meal_slot)}</td>
+      <td>${r.foods?.name||"—"}</td>
+      <td>${r.servings||1}</td>
+      <td>${r.kcal||0}</td>
+      <td>${r.protein_g||0}</td>
+      <td>${r.carbs_g||0}</td>
+      <td>${r.fat_g||0}</td>
+    </tr>`;
+  }).join("");
+
+  setDaySummary({kcal:sumK,p:sumP,c:sumC,g:sumG});
+}
+
+function ptMeal(m){
+  return ({breakfast:"Café",lunch:"Almoço",dinner:"Jantar",snack:"Lanche"}[m]||m);
+}
+function setDaySummary({kcal,p,c,g}){
+  $("#sum-kcal").textContent = kcal;
+  $("#sum-p").textContent = p+" g";
+  $("#sum-c").textContent = c+" g";
+  $("#sum-f").textContent = g+" g";
 }
