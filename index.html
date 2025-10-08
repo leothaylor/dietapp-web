@@ -17,17 +17,27 @@
     </nav>
   </header>
 
-  <!-- Auth -->
-  <main id="view-auth" class="container card">
-    <h1>Entrar</h1>
-    <p class="muted">Use e-mail e senha. Se não tiver conta, será criada.</p>
-    <form id="form-auth" class="grid2">
-      <label>E-mail <input type="email" id="auth-email" required /></label>
-      <label>Senha <input type="password" id="auth-pass" required minlength="6"/></label>
-      <button class="btn primary" type="submit">Entrar / Criar conta</button>
-    </form>
-    <p id="auth-msg" class="msg"></p>
-  </main>
+ <!-- Auth -->
+<main id="view-auth" class="container card">
+  <h1>Entrar</h1>
+  <p class="muted">Use e-mail e senha. Se não tiver conta, será criada.</p>
+
+  <div class="grid2">
+    <label>E-mail
+      <input type="email" id="auth-email" autocomplete="username" required />
+    </label>
+    <label>Senha
+      <input type="password" id="auth-pass" autocomplete="current-password" required minlength="6" />
+    </label>
+  </div>
+
+  <div class="row gap" style="margin-top: .75rem">
+    <button class="btn" id="btn-login">Entrar</button>
+    <button class="btn primary" id="btn-signup">Criar conta</button>
+  </div>
+
+  <p id="auth-msg" class="msg"></p>
+</main>
 
   <!-- Perfil -->
   <main id="view-profile" class="container hidden">
@@ -145,3 +155,4 @@
   <script type="module" src="./app.js"></script>
 </body>
 </html>
+
