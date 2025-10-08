@@ -1,116 +1,88 @@
-// app.js  —  mínimo e estável
+// app.js
 import { mountProfile } from "./components/profile.js";
-import { mountDiary } from "./components/diary.js";
+import { mountDiary }   from "./components/diary.js";
 
-// ----------------------------------------------------
-// 1) Supabase client (usa window.APP_CONFIG vindo do config.js)
-const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG;
-const supabase = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// helpers DOM
-const $ = (sel) => document.querySelector(sel);
-const show = (id) => {
-  $("#view-auth").classList.add("hidden");
-  $("#view-diary").classList.add("hidden");
-  $("#view-profile").classList.add("hidden");
-  $(id).classList.remove("hidden");
-};
-
-// ----------------------------------------------------
-// 2) Navegação (uma vez só)
-function wireNav() {
-  $("#nav-diario").onclick = () => {
-    show("#view-diary");
-    mountDiary(supabase); // garante refresh da lista
-  };
-  $("#nav-perfil").onclick = () => {
-    show("#view-profile");
-    mountProfile(supabase);
-  };
-  $("#btn-logout").onclick = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      $("#nav").classList.add("hidden");
-      $("#nav-user").textContent = "";
-      show("#view-auth");
-      $("#auth-msg").textContent = "";
-    }
-  };
+// 1) Supabase client único, exposto em window para os componentes
+const { SUPABASE_URL, SUPABASE_ANON_KEY } = window.APP_CONFIG || {};
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  alert("Configuração Supabase ausente. Verifique config.js");
 }
+export const supabase = window.supabase = window.supabase ??
+  window.supabase?.createClient?.(SUPABASE_URL, SUPABASE_ANON_KEY) ??
+  window.createClient?.(SUPABASE_URL, SUPABASE_ANON_KEY) ??
+  (window.supabase = window.Supabase?.createClient?.(SUPABASE_URL, SUPABASE_ANON_KEY));
 
-// ----------------------------------------------------
-// 3) Auth: entrar / criar
-function wireAuth() {
-  const email = $("#auth-email");
-  const pass  = $("#auth-pass");
-  const msg   = $("#auth-msg");
+// 2) atalhos DOM
+const $  = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
 
-  $("#btn-login").onclick = async () => {
-    msg.textContent = "Entrando...";
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.value.trim(),
-        password: pass.value
-      });
-      if (error) throw error;
-    } catch (e) {
-      msg.textContent = `Erro ao entrar: ${e.message}`;
-    }
-  };
-
-  $("#btn-signup").onclick = async () => {
-    msg.textContent = "Criando conta...";
-    try {
-      const { error } = await supabase.auth.signUp({
-        email: email.value.trim(),
-        password: pass.value
-      });
-      if (error) throw error;
-      msg.textContent = "Conta criada! Agora clique em Entrar.";
-    } catch (e) {
-      msg.textContent = `Erro ao criar conta: ${e.message}`;
-    }
-  };
-}
-
-// ----------------------------------------------------
-// 4) Reagir à sessão (uma vez só)
-let authHookWired = false;
-function wireAuthHook() {
-  if (authHookWired) return;
-  authHookWired = true;
-
-  supabase.auth.onAuthStateChange(async (_evt, session) => {
-    if (session?.user) {
-      // autenticado
-      $("#nav").classList.remove("hidden");
-      $("#nav-user").textContent = session.user.email || session.user.id;
-
-      // monta telas
-      mountDiary(supabase);
-      mountProfile(supabase);
-
-      // abre Diário por padrão
-      show("#view-diary");
-    } else {
-      // não autenticado
-      $("#nav").classList.add("hidden");
-      $("#nav-user").textContent = "";
-      show("#view-auth");
-    }
+// 3) navegação simples
+function show(viewId) {
+  ["#view-auth", "#view-profile", "#view-diary"].forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    if (id === viewId) el.classList.remove("hidden");
+    else el.classList.add("hidden");
   });
+  $("#nav")?.classList.toggle("hidden", viewId === "#view-auth");
 }
 
-// ----------------------------------------------------
-(function boot() {
-  if (!supabase) {
-    $("#auth-msg").textContent = "Supabase não carregou. Verifique config.js e script da lib.";
+// 4) auth UI
+async function doLogin() {
+  const email = $("#auth-email").value.trim();
+  const pass  = $("#auth-pass").value.trim();
+  if (!email || !pass) return msgAuth("Informe e-mail e senha.");
+  msgAuth("Entrando...");
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+  if (error) return msgAuth("Erro ao entrar: " + error.message);
+  msgAuth("");
+}
+
+async function doSignup() {
+  const email = $("#auth-email").value.trim();
+  const pass  = $("#auth-pass").value.trim();
+  if (!email || !pass) return msgAuth("Informe e-mail e senha.");
+  msgAuth("Criando conta...");
+  const { error } = await supabase.auth.signUp({ email, password: pass });
+  if (error) return msgAuth("Erro ao criar conta: " + error.message);
+  msgAuth("Conta criada. Agora clique em Entrar.");
+}
+
+function msgAuth(t) { $("#auth-msg").textContent = t || ""; }
+
+// 5) logout sólido
+async function doLogout() {
+  try { await supabase.auth.signOut(); } catch {}
+  // limpa cache local do Supabase do domínio GitHub Pages
+  Object.keys(localStorage).forEach(k => { if (k.startsWith("sb-")) localStorage.removeItem(k); });
+  location.replace(location.origin + location.pathname); // reload "limpo"
+}
+
+// 6) listeners básicos
+$("#btn-login") ?.addEventListener("click", (e)=>{ e.preventDefault(); doLogin(); });
+$("#btn-signup")?.addEventListener("click", (e)=>{ e.preventDefault(); doSignup(); });
+$("#btn-logout")?.addEventListener("click", (e)=>{ e.preventDefault(); doLogout(); });
+
+$("#nav-diario") ?.addEventListener("click", ()=>show("#view-diary"));
+$("#nav-perfil") ?.addEventListener("click", ()=>show("#view-profile"));
+
+// 7) quando o estado de auth muda, (re)monta as telas
+supabase.auth.onAuthStateChange(async (_evt, session) => {
+  if (!session) {
+    $("#nav-user").textContent = "";
+    show("#view-auth");
     return;
   }
-  wireNav();
-  wireAuth();
-  wireAuthHook();
+  $("#nav-user").textContent = session.user.email || "";
+  show("#view-diary");
+
+  // monta componentes com o client e a sessão
+  await mountProfile({ supabase, session });
+  await mountDiary({ supabase, session });
+});
+
+// 8) inicializa: tenta restaurar sessão
+(async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) show("#view-auth");
 })();
