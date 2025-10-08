@@ -9,7 +9,7 @@ mountAuth({ supabase });
 mountProfile({ supabase });
 mountDiary({ supabase });
 
-// Restaurar sessão e mostrar view correta
+// Restaura sessão ao abrir
 (async () => {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
