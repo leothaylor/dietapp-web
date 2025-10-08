@@ -3,7 +3,6 @@ import { todayISO, fmt, setText } from "../utils/helpers.js";
 export function mountDiary({ supabase }) {
   $("#diary-date").value = todayISO();
 
-  // Buscar foods por texto
   $("#food-search").addEventListener("input", async (e) => {
     const q = e.target.value.trim();
     const select = $("#food-select");
@@ -17,19 +16,17 @@ export function mountDiary({ supabase }) {
     if (error) return;
     data.forEach(f => {
       const o = document.createElement("option");
-      o.value = JSON.stringify(f); // guardo o objeto
+      o.value = JSON.stringify(f);
       o.textContent = `${f.name}${f.brand?` (${f.brand})`:''} — ${f.energy_kcal_100g} kcal/100g`;
       select.appendChild(o);
     });
   });
 
-  // Inserir entry
   $("#btn-insert-entry").addEventListener("click", async () => {
     const v = $("#food-select").value;
     if (!v) return alert("Selecione um alimento.");
     const food = JSON.parse(v);
     const servings = Number($("#servings").value || 1);
-    // por simplicidade: 1 porção = 100g
     const kcal = Math.round((food.energy_kcal_100g || 0) * servings);
     const p = Math.round((food.protein_g_100g || 0) * servings);
     const c = Math.round((food.carbs_g_100g || 0) * servings);
@@ -48,10 +45,8 @@ export function mountDiary({ supabase }) {
     await reloadDay();
   });
 
-  // Adicionar via botão “+ Adicionar alimento” (foco no campo)
   $("#btn-add-entry").addEventListener("click", () => $("#food-search").focus());
 
-  // carregar entradas do dia e somar
   async function reloadDay() {
     const session = (await supabase.auth.getSession()).data.session;
     if (!session) return;
@@ -79,12 +74,10 @@ export function mountDiary({ supabase }) {
     setText("sum-c", sumC);
     setText("sum-f", sumF);
 
-    // meta do dia (lê do profiles)
     const prof = await supabase.from("profiles").select("tdee_kcal").single().catch(()=>({data:null}));
     setText("sum-target", prof.data?.tdee_kcal ?? "—");
   }
 
   $("#diary-date").addEventListener("change", reloadDay);
-  // carrega ao logar
   supabase.auth.onAuthStateChange((_e, s) => { if (s) reloadDay(); });
 }
