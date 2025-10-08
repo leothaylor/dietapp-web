@@ -1,146 +1,153 @@
 // components/diary.js
+import { supabase } from "../app.js";
 const $ = (s)=>document.querySelector(s);
 
-let wired = false;
+function toNumber(v){ const n = Number(String(v).replace(",", ".")); return isFinite(n)?n:0; }
 
-export function mountDiary(supabase){
-  if (!wired){
-    // buscar conforme digita
-    $("#food-search").addEventListener("input", ()=> searchFoods(supabase));
-    // inserir
-    $("#btn-insert-entry").addEventListener("click", ()=> insertEntry(supabase));
-    // data padrão
-    $("#diary-date").value = new Date().toISOString().slice(0,10);
-    wired = true;
+export async function mountDiary({ session }) {
+  const uid = session.user.id;
+
+  // data hoje
+  const dateEl = $("#diary-date");
+  if (dateEl && !dateEl.value) {
+    const today = new Date();
+    const d = today.toISOString().slice(0,10);
+    dateEl.value = d;
   }
 
-  // carrega lista do dia
-  listEntries(supabase);
-  // e tenta popular alimentos se o campo não estiver vazio
-  searchFoods(supabase);
-}
+  // busca de alimentos
+  $("#food-search")?.addEventListener("input", debounce(loadFoods, 250));
+  $("#food-select")?.addEventListener("change", ()=>{
+    const has = $("#food-select").value;
+    $("#servings").disabled = !has;
+  });
 
-async function searchFoods(supabase){
-  const q = $("#food-search").value.trim();
+  $("#btn-insert-entry")?.addEventListener("click", async ()=>{
+    const foodId = $("#food-select").value;
+    const servings = toNumber($("#servings").value);
+    const meal = $("#meal-slot").value;
 
-  const sel = $("#food-select");
-  sel.innerHTML = `<option value="">Buscando...</option>`;
+    if (!foodId || servings <= 0) {
+      return alert("Escolha um alimento e informe porções > 0");
+    }
 
-  const query = supabase.from("foods").select("id,name,serving_desc,serving_g").order("name");
-  if (q) query.ilike("name", `%${q}%`);
-  const { data, error } = await query.limit(50);
+    // pega nutrição do alimento para gravar os campos calculados
+    const { data: food } = await supabase.from("foods")
+      .select("id, name, serving_g, energy_kcal_100g, protein_g_100g, carbs_g_100g, fat_g_100g")
+      .eq("id", foodId).maybeSingle();
 
-  if (error){
-    sel.innerHTML = `<option value="">Erro ao buscar</option>`;
-    console.error(error);
-    return;
-  }
-  if (!data?.length){
-    sel.innerHTML = `<option value="">Nenhum alimento</option>`;
-    return;
-  }
-
-  sel.innerHTML = data.map(f=>(
-    `<option value="${f.id}" data-sg="${f.serving_g||0}">${f.name}${f.serving_desc?` — ${f.serving_desc}`:""}</option>`
-  )).join("");
-}
-
-async function insertEntry(supabase){
-  const foodId = $("#food-select").value;
-  const servings = parseFloat($("#servings").value||"1");
-  const meal = $("#meal-slot").value;
-  const date = $("#diary-date").value;
-
-  if (!foodId || !(servings>0)){
-    alert("Escolha um alimento e informe porções > 0");
-    return;
-  }
-
-  try{
-    const session = (await supabase.auth.getSession()).data.session;
-    if (!session) throw new Error("Sem sessão");
-
-    // pega macros do alimento
-    const { data: foods } = await supabase.from("foods")
-      .select("energy_kcal_100g,protein_g_100g,carbs_g_100g,fat_g_100g,serving_g")
-      .eq("id", foodId).limit(1);
-
-    if (!foods?.length) throw new Error("Alimento não encontrado");
-
-    const f = foods[0];
-    const sg = f.serving_g || 100; // default
-
-    // converte 100g -> porção
-    const factor = (sg/100) * servings;
-    const kcal = Math.round(f.energy_kcal_100g * factor);
-    const p = Math.round(f.protein_g_100g * factor);
-    const c = Math.round(f.carbs_g_100g * factor);
-    const g = Math.round(f.fat_g_100g * factor);
+    const factor = (food?.serving_g || 100) / 100 * servings;
+    const kcal = Math.round((food?.energy_kcal_100g||0) * factor);
+    const p    = Math.round((food?.protein_g_100g||0)    * factor);
+    const c    = Math.round((food?.carbs_g_100g||0)      * factor);
+    const f    = Math.round((food?.fat_g_100g||0)        * factor);
 
     const { error } = await supabase.from("entries").insert({
-      user_id: session.user.id, date, meal_slot: meal, food_id: foodId,
-      servings, kcal, protein_g: p, carbs_g: c, fat_g: g
+      user_id: uid,
+      date: $("#diary-date").value,
+      meal_slot: meal,
+      food_id: foodId,
+      servings,
+      kcal, protein_g: p, carbs_g: c, fat_g: f
     });
+    if (error) return alert("Erro ao inserir: " + error.message);
 
-    if (error) throw error;
+    await loadEntries();
+  });
 
-    // recarrega tabela
-    await listEntries(supabase);
-    $("#servings").value = "1";
-  }catch(e){
-    alert(`Erro ao inserir: ${e.message}`);
+  $("#diary-date")?.addEventListener("change", loadEntries);
+
+  await loadFoods();
+  await loadEntries();
+
+  async function loadFoods() {
+    const q = ($("#food-search").value || "").trim();
+    let query = supabase.from("foods")
+      .select("id, name, brand, serving_desc, serving_g")
+      .order("name", { ascending: true })
+      .limit(30);
+    if (q) query = query.ilike("name", `%${q}%`);
+    const { data, error } = await query;
+    const sel = $("#food-select");
+    sel.innerHTML = "";
+    if (error) return;
+
+    for (const f of data || []) {
+      const opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = `${f.name}${f.brand ? " • "+f.brand : ""} (${f.serving_desc||"-"} · ${f.serving_g||"-"}g)`;
+      sel.appendChild(opt);
+    }
+    $("#servings").disabled = !(sel.value);
+  }
+
+  async function loadEntries() {
+    const date = $("#diary-date").value;
+    const { data, error } = await supabase
+      .from("entries")
+      .select("id, meal_slot, servings, kcal, protein_g, carbs_g, fat_g, foods(name)")
+      .eq("user_id", uid).eq("date", date)
+      .order("created_at", { ascending: true });
+
+    const tbody = $("#entries-table tbody");
+    tbody.innerHTML = "";
+    if (error) return;
+
+    let sumK=0, sumP=0, sumC=0, sumF=0;
+    for (const e of data || []) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${ptMeal(e.meal_slot)}</td>
+        <td>${e.foods?.name || "-"}</td>
+        <td>${e.servings}</td>
+        <td>${e.kcal ?? 0}</td>
+        <td>${e.protein_g ?? 0}</td>
+        <td>${e.carbs_g ?? 0}</td>
+        <td>${e.fat_g ?? 0}</td>`;
+      tbody.appendChild(tr);
+
+      sumK += e.kcal||0; sumP += e.protein_g||0; sumC += e.carbs_g||0; sumF += e.fat_g||0;
+    }
+
+    // metas do dia: usa perfil salvo
+    const { data: prof } = await supabase.from("profiles")
+      .select("weight_kg, height_cm, age, sex, activity_routine, training_freq, goal_pct")
+      .eq("user_id", uid).maybeSingle();
+    let target = "—";
+    if (prof) {
+      const { kcal } = calcDailyTarget(prof);
+      target = kcal;
+    }
+
+    $("#sum-target").textContent = target;
+    $("#sum-kcal").textContent   = sumK;
+    $("#sum-p").textContent      = sumP;
+    $("#sum-c").textContent      = sumC;
+    $("#sum-f").textContent      = sumF;
+  }
+
+  function ptMeal(m) {
+    return m==="breakfast"?"Café":m==="lunch"?"Almoço":m==="dinner"?"Jantar":"Lanche";
   }
 }
 
-async function listEntries(supabase){
-  const date = $("#diary-date").value;
-  const tbody = $("#entries-table tbody");
-  tbody.innerHTML = "<tr><td colspan='7'>Carregando...</td></tr>";
-
-  const session = (await supabase.auth.getSession()).data.session;
-  if (!session) return;
-
-  const { data, error } = await supabase
-    .from("entries")
-    .select("meal_slot, foods(name), servings, kcal, protein_g, carbs_g, fat_g")
-    .eq("user_id", session.user.id)
-    .eq("date", date)
-    .order("meal_slot");
-
-  if (error){
-    tbody.innerHTML = "<tr><td colspan='7'>Erro</td></tr>";
-    console.error(error);
-    return;
-  }
-  if (!data?.length){
-    tbody.innerHTML = "<tr><td colspan='7'>Sem lançamentos</td></tr>";
-    setDaySummary({kcal:0,p:0,c:0,g:0});
-    return;
-  }
-
-  let sumK=0,sumP=0,sumC=0,sumG=0;
-  tbody.innerHTML = data.map(r=>{
-    sumK+=r.kcal||0; sumP+=r.protein_g||0; sumC+=r.carbs_g||0; sumG+=r.fat_g||0;
-    return `<tr>
-      <td>${ptMeal(r.meal_slot)}</td>
-      <td>${r.foods?.name||"—"}</td>
-      <td>${r.servings||1}</td>
-      <td>${r.kcal||0}</td>
-      <td>${r.protein_g||0}</td>
-      <td>${r.carbs_g||0}</td>
-      <td>${r.fat_g||0}</td>
-    </tr>`;
-  }).join("");
-
-  setDaySummary({kcal:sumK,p:sumP,c:sumC,g:sumG});
+// mesmo alvo diário do profile.js (versão reduzida)
+function calcDailyTarget(p){
+  const w = toNumber(p.weight_kg), h = toNumber(p.height_cm), a = toNumber(p.age);
+  const bmr = Math.round((p.sex==="male" ? (10*w+6.25*h-5*a+5) : (10*w+6.25*h-5*a-161)));
+  const base =
+    p.activity_routine === "very_active" ? 1.7 :
+    p.activity_routine === "active"      ? 1.55 :
+    p.activity_routine === "moderate"    ? 1.45 :
+    p.activity_routine === "light"       ? 1.35 : 1.25;
+  const tf = String(p.training_freq||"0");
+  const bonus = (tf==="5+"?0.10:tf==="3-4"?0.07:tf==="1-2"?0.04:0);
+  const tdee = Math.round(bmr*(base+bonus));
+  const kcal = Math.round(tdee*(1 + (toNumber(p.goal_pct)/100)));
+  return { kcal };
 }
 
-function ptMeal(m){
-  return ({breakfast:"Café",lunch:"Almoço",dinner:"Jantar",snack:"Lanche"}[m]||m);
-}
-function setDaySummary({kcal,p,c,g}){
-  $("#sum-kcal").textContent = kcal;
-  $("#sum-p").textContent = p+" g";
-  $("#sum-c").textContent = c+" g";
-  $("#sum-f").textContent = g+" g";
+// util
+function debounce(fn, ms){
+  let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
 }
