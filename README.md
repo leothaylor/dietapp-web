@@ -1,76 +1,133 @@
-# Nutri — Diário nutricional pessoal (MVP)
+# Nutri 2.0 — diário nutricional e corporal pessoal
 
-Aplicativo PWA independente, publicado na raiz de `dietapp-web/`. **Não altera o DietApp antigo na raiz do repositório.**
+PWA local-first, **sem mensalidade, login obrigatório ou backend**. Hospedado no GitHub Pages no endereço principal:
+https://leothaylor.github.io/dietapp-web/
 
-## Funcionalidades implementadas
+**Atenção:** todos os dados pessoais permanecem no IndexedDB do navegador de cada dispositivo. O GitHub hospeda apenas o código. Faça backups JSON regulares; trocar de navegador ou apagar dados do site pode apagar seu histórico.
 
-- Diário por data e refeição; lançamento em gramas; macros e calorias.
-- Alimentos pessoais, edição, exclusão e busca local.
-- Catálogo TACO (597 alimentos) sob demanda e importação por alimento via API estática.
-- Consulta EAN/UPC por Open Food Facts; scanner câmera com BarcodeDetector ou fallback ZXing (conexão necessária para carregar a biblioteca fallback).
-- Receitas com ingredientes em gramas e rendimento final, criando tabela por 100 g.
-- Relatório de 7 dias, micronutrientes com indicação de dados incompletos.
-- Metas editáveis, IndexedDB local e backup/restauração JSON completo e versionado.
-- PWA instalável e shell disponível offline após primeiro carregamento.
+## Módulos e capacidades
 
-## Publicação e execução
+| Módulo | Recursos |
+| --- | --- |
+| Diário | Refeições por data, macros, calorias, refeições personalizadas, copiar dia/refeição, favoritos completos |
+| Alimentos | Cadastro manual, macronutrientes e micros, porções em gramas/medidas caseiras, TACO, códigos EAN/UPC via Open Food Facts, USDA opcional, importação JSON da biblioteca |
+| Receitas | Ingredientes e pesos, rendimento final, número de porções, cálculo por 100 g, duplicação e reaproveitamento |
+| Evolução corporal | Peso, meta ou faixa de peso, altura, sexo para fórmula, cintura, pescoço, quadril, braço, antebraço, peitoral, abdômen, coxa e panturrilha, BF US Navy ou BF informado, massa gorda e massa livre de gordura estimadas, média móvel de peso 7 dias, gráficos por período |
+| Hidratação | Atalhos +150/+200/+300/+500/+1000 ml, quantidade livre, meta diária, calendário, registros e gráfico de 30 dias |
+| Análises | Calorias e micros, médias de macros, cobertura dos dados, aderência às metas, tendências, comparação 7/30 dias, CSV de nutrição, antropometria e água |
+| Medalhas | 130 medalhas automáticas em sete categorias; coloridas após desbloqueadas e cinza quando bloqueadas, progresso, data de conquista e notificação visual |
+| Ajustes | Metas alimentares, altura, sexo do cálculo, peso-alvo/faixa e água; backup integral JSON com importação compatível com backups antigos |
 
-GitHub Pages: se o repositório estiver publicado a partir de `main` e `/ (root)`, abrir:
-`https://leothaylor.github.io/dietapp-web/`
+## Privacidade e dados
 
-Caso Pages não esteja ativado, em **Settings → Pages → Build and deployment → Deploy from a branch → main / (root)**.
+- Banco original: **nutri-diario-v1**. Preservado durante a atualização de estrutura v1 → v2, sem apagar os registros anteriores.
+- Collections legadas: \`foods\`, \`recipes\`, \`entries\`, \`settings\`, \`cache\`.
+- Novas collections v2: \`body\`, \`water\`, \`favorites\`, \`awards\`.
+- Backup JSON v2 guarda todos os módulos, metas, histórico de conquistas e configurações. Backups v1 continuam restauráveis.
+- Importação **substitui** os dados somente depois de validação e confirmação explícita.
+- O diário guarda os valores nutricionais calculados no momento do registro (snapshot), preservando histórico após edição de um alimento ou receita.
+- Cópia e favorito reutilizam os registros como snapshots, sem recalcular retroativamente os dados.
+- Os campos de micronutrientes desconhecidos são \`null\`, jamais confundidos com zero.
 
-Localmente, sirva a raiz do repositório por HTTP (não abra com file://, pois PWA e IndexedDB exigem contexto apropriado):
+## Critérios científicos
 
-```bash
+O BF pela equação de circunferências US Navy depende das medidas apropriadas, da altura e do sexo selecionado para a fórmula. Não equivale a avaliação clínica ou DEXA. Massa livre de gordura inclui água, ossos, órgãos e outros tecidos; **não é medição de músculo**.
+
+As medalhas de composição corporal baseadas em estimativas exigem pelo menos quatro avaliações em dias distintos, duas no período inicial e duas no final, separadas por no mínimo 14 dias e com método comparável. A sensibilidade não é suficiente para comprovar uma variação real de 500 g de gordura ou músculo: a medalha corresponde apenas a um **marco da tendência estimada**. O aplicativo não recomenda restrição extrema, emagrecimento acelerado nem volumes excessivos de água.
+
+Desafios de 3 L funcionam como marcos automáticos do registro, **não como recomendação universal de ingestão hídrica**.
+
+## Leitura de código de barras, TACO e USDA
+
+- **TACO:** catálogo brasileiro público por solicitação, via API estática de [brolesi/taco](https://github.com/brolesi/taco).
+- **Open Food Facts:** consulta EAN/UPC pelo serviço colaborativo, sujeito a limites, disponibilidade e qualidade dos rótulos. O navegador pode utilizar \`BarcodeDetector\` ou ZXing como fallback; digitação manual continua disponível.
+- **USDA FoodData Central:** busca gratuita pelo botão "Pesquisar USDA", dados *Foundation* ou *SR Legacy*; integra micronutrientes nos nomes internos. Começa com a \`DEMO_KEY\` pública, que possui limites compartilhados (30/h e 50/dia por IP) e pode ficar indisponível. Não incluímos chave pessoal no código. [Documentação oficial](https://fdc.nal.usda.gov/api-guide/).
+- Fontes externas são identificadas e nunca substituem o julgamento sobre a qualidade de um rótulo ou preparo.
+
+## Importação JSON produzida pelo GPT
+
+No módulo **Alimentos → Importar JSON GPT**, aceite um arquivo com este formato:
+
+\`\`\`json
+{
+  "schema": "nutri-library",
+  "version": 1,
+  "foods": [
+    {
+      "name": "Pão integral caseiro",
+      "brand": "",
+      "barcode": "",
+      "nutrients": {
+        "kcal": 240,
+        "protein": 9,
+        "carbs": 44,
+        "fat": 3,
+        "fiber": 7,
+        "sodium": 320,
+        "calcium": null,
+        "iron": null
+      },
+      "portions": [
+        {"name": "1 fatia", "grams": 30}
+      ]
+    }
+  ],
+  "recipes": [
+    {
+      "name": "Sanduíche simples",
+      "yieldGrams": 60,
+      "servings": 1,
+      "ingredients": [
+        {"foodName": "Pão integral caseiro", "grams": 60}
+      ]
+    }
+  ]
+}
+\`\`\`
+
+- Os valores nutricionais devem ser informados **por 100 gramas**, com unidades: kcal, proteína/carboidratos/gorduras/fibras em g, minerais em mg e vitamina A (RAE) em µg.
+- Campos ausentes ficam \`null\`; não invente valores ou fontes.
+- Os ingredientes de uma receita devem coincidir com nomes de alimentos importados no mesmo arquivo ou já salvos na biblioteca.
+- Cada arquivo é validado antes de gravar os alimentos. Importações não apagam a biblioteca existente.
+- Para receitas, dados após cocção não corrigem perdas específicas de vitaminas ou minerais.
+
+## Testar localmente e no GitHub
+
+Código estático, sem build ou conta. Para servir localmente:
+
+\`\`\`bash
 python -m http.server 8000
-# abrir http://localhost:8000/
-```
+\`\`\`
 
-## Dados e privacidade
+Abrir http://localhost:8000/ (PWA requer HTTPS ou localhost para funcionalidades seguras).
 
-A interface e o código ficam no GitHub; **as entradas pessoais não são enviadas** ao repositório. Cada navegador/dispositivo mantém um banco IndexedDB próprio. Limpar dados do site pode eliminar registros. Exporte o JSON periodicamente para armazenamento externo. Restaurar substitui todas as coleções locais.
+Para testes de regressão, usar Node.js 20+:
 
-As entradas do diário guardam cópias dos nutrientes calculados na ocasião, de modo que a edição posterior de um alimento não altera lançamentos antigos. Receitas também guardam snapshots de seus ingredientes.
+\`\`\`bash
+npm test
+npm run check
+\`\`\`
 
-## Licenças e referências
+### Checklist manual de homologação
 
-- TACO (NEPA/UNICAMP), API estática de brolesi/taco: https://github.com/brolesi/taco
-- Open Food Facts (dados colaborativos ODbL): https://world.openfoodfacts.org/
-- ZXing Browser para fallback de scanner (MIT): https://github.com/zxing-js/browser
+- [ ] A página principal abre como Nutri (sem login antigo).
+- [ ] Alimentos e refeições anteriores permanecem após atualização.
+- [ ] Criar, renomear e remover espaço de refeição sem alterar histórico.
+- [ ] Cadastrar alimento com 100 g de referência e porção de 30 g; lançar 2 porções e conferir nutrientes.
+- [ ] Criar receita de dois ingredientes, com rendimento de 350 g e 5 porções; registrar porção de 70 g.
+- [ ] Copiar refeição do dia anterior e salvar/usar favorito.
+- [ ] Registrar pesagem, cintura e pescoço; verificar cálculo BF com altura/sexo definidos e série temporal.
+- [ ] Editar metas, registrar água em doses e consultar data anterior.
+- [ ] Lançar 3 L em sete dias consecutivos num ambiente de teste e verificar medalha; verificar bloqueio de 14 dias.
+- [ ] Exportar CSV de alimentação, corpo e água.
+- [ ] Exportar backup v2 e restaurar em navegador limpo; conferir registros, receitas, pesos, água, medalhas e metas.
+- [ ] Restaurar backup v1 em navegador de teste, confirmar preservação dos campos antigos.
+- [ ] Testar TACO, USDA, EAN e scanner real no Safari iPhone.
+- [ ] Abrir o aplicativo offline após primeiro carregamento.
+- [ ] Testar responsividade das oito áreas no celular e a notificação de medalhas.
 
-Não há cópia de código do OpenNutriTracker, NutriTrace ou wger.
+## Desenvolvimento e licenças
 
-## Limitações da V1
+Sem dependências obrigatórias de runtime, com scripts ES modules e CSS responsivo. Medals e Navy ficam no módulo puro \`achievements.js\`. Recursos novos estão em \`extras.js\` e \`extras.css\`, com módulo USDA separado, enquanto o diário original permanece em \`app.js\`.
 
-- Câmera e Open Food Facts requerem internet na primeira utilização; offline não consulta produtos novos.
-- Informações nutricionais incompletas são mostradas como ausentes, nunca assumidas como zero.
-- TACO é importada sob demanda; o catálogo completo (índice) é armazenado localmente após a primeira consulta.
-- Quantidades são expressas em gramas, incluindo bebidas; não há medidas caseiras automáticas nem leitura OCR de rótulo.
-- Não existe sincronização entre dispositivos. Use exportação/importação JSON.
-- Não existe IA no app nem reconhecimento de comida por fotografia.
-- As estimativas das receitas não modelam perdas específicas de nutrientes por cozimento.
-- Uso do scanner ZXing depende de disponibilidade de CDN no navegador; o formulário manual serve de fallback.
-- Os micros agregados podem ser parciais se produtos de rótulo não fornecerem os campos.
-
-## Teste de aceite
-
-1. Abrir em HTTPS, cadastrar alimento com macros e um micronutriente conhecido.
-2. Registrar 120 g no almoço e conferir escala `x 1.2`.
-3. Editar alimento original; confirmar que o lançamento histórico não mudou.
-4. Criar receita de dois ingredientes; informar rendimento final, registrar porção e conferir os cálculos.
-5. Exportar JSON; restaurar em navegador de teste, conferir totais.
-6. Importar arroz cozido pela TACO e conferir identificação de preparo.
-7. Testar câmera no Safari do iPhone; usar EAN manual se necessário.
-8. Desligar a internet após o primeiro carregamento; confirmar que o app abre e os dados locais permanecem acessíveis.
-
-**Status:** código inicial publicado; testes reais no iPhone e ativação do Pages precisam ser conferidos no dispositivo/ambiente publicado.
-
-## Refeições personalizáveis
-
-- O botão **+ Nova refeição** cria espaços reutilizáveis em todos os dias.
-- O ícone de lápis renomeia qualquer refeição; o ID permanece estável e preserva lançamentos antigos.
-- Espaços personalizados podem ser excluídos somente se não houver registros associados em nenhuma data.
-- O backup JSON inclui nomes e ordem dos espaços. Arquivos de backup anteriores continuam aceitos com nomes padrão.
-- A migração de `/nutri/` para a raiz mantém o mesmo IndexedDB da origem do site, sem migração de dados, desde que navegador, perfil e domínio sejam os mesmos.
-- Os arquivos antigos (login Supabase e componentes DietApp) deixam de ser servidos na raiz.
+**Limitações:** não há sincronização automática entre dispositivos, leitura de alimento por fotografia, chat IA embutido, metas distintas por treino ou integração com AtlasTreino. Nenhum desses recursos foi solicitado para a versão atual.
