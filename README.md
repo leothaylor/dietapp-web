@@ -131,3 +131,18 @@ npm run check
 Sem dependências obrigatórias de runtime, com scripts ES modules e CSS responsivo. Medals e Navy ficam no módulo puro \`achievements.js\`. Recursos novos estão em \`extras.js\` e \`extras.css\`, com módulo USDA separado, enquanto o diário original permanece em \`app.js\`.
 
 **Limitações:** não há sincronização automática entre dispositivos, leitura de alimento por fotografia, chat IA embutido, metas distintas por treino ou integração com AtlasTreino. Nenhum desses recursos foi solicitado para a versão atual.
+
+## Solução de problemas — atualização bloqueada / medalhas vazias
+
+Na migração do IndexedDB v1 para v2, uma aba antiga do Nutri pode manter uma conexão aberta e impedir a atualização do banco. Como versões anteriores não registravam o evento de encerramento da conexão, o navegador pode aguardar indefinidamente até a outra aba ser fechada.
+
+O aplicativo agora:
+- Exibe um aviso permanente quando a migração é bloqueada (evento `onblocked`).
+- Impede operações de gravação antes de o banco estar pronto; não mostra mais o erro técnico `Cannot read properties of undefined (reading 'transaction')`.
+- Exibe as 130 prévias bloqueadas mesmo enquanto o banco local não está carregado.
+- Fecha a conexão desta aba quando outra atualização do banco exige a troca de versão.
+- Atualiza o Service Worker antes da abertura do banco e usa estratégia rede-primeiro para scripts e CSS, com fallback offline.
+
+**Recuperação segura:** feche todas as outras abas e janelas do Nutri (inclusive versões instaladas como app), mantenha uma aba e atualize-a com Ctrl+F5 no computador. Não limpe cache/dados do site, não exclua IndexedDB e não reinstale o PWA como primeira medida. Os registros pessoais são mantidos na mesma origem, em `nutri-diario-v1`.
+
+O bloqueio depende de abas locais abertas no próprio navegador; não pode ser removido por um comando remoto do GitHub.
