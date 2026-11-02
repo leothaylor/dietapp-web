@@ -21,7 +21,7 @@ function seriesMetrics(body){
  const list=(body||[]).filter(x=>x?.date&&Number(x.weightKg)>0).slice().sort((a,b)=>a.date.localeCompare(b.date));
  const bodyDays=uniq(list.map(x=>x.date));
  const measures=uniq(list.filter(x=>Number(x.waistCm)>0&&Number(x.neckCm)>0).map(x=>x.date));
- const samples=list.filter(x=>typeof x.fatKg==='number'&&typeof x.leanKg==='number'&&Number.isFinite(x.fatKg)&&Number.isFinite(x.leanKg)&&Number(x.waistCm)>0);
+ const samples=[...new Map(list.filter(x=>typeof x.fatKg==='number'&&typeof x.leanKg==='number'&&Number.isFinite(x.fatKg)&&Number.isFinite(x.leanKg)&&Number(x.waistCm)>0).map(x=>[x.date,x])).values()];
  let fatLost=0,leanGained=0,waistLost=0,recomp=0,stable=0,valid=false;
  if(samples.length>=4){
    const first=samples.slice(0,2),last=samples.slice(-2);
@@ -67,7 +67,7 @@ function makeRules(){
  const rules=[];
  const add=(...a)=>rules.push(newRule(...a));
  const addSeries=(category,code,metric,values,title,icon,unit='')=>{
-  values.forEach((v,i)=>add(code+'_'+v,category,title+' '+tier(i),title+': '+v+(unit?' '+unit:''),metric,v,icon,unit))
+  values.forEach((v,i)=>add(code+'_'+v,category,title+' '+tier(i)+' · '+v+(unit?' '+unit:''),title+': '+v+(unit?' '+unit:''),metric,v,icon,unit))
  };
  addSeries('diario','diario_dias','diaryDays',[1,3,7,14,21,30,45,60,90,120],'Dias registrados','📅','dias');
  addSeries('diario','diario_sequencia','diaryStreak',[2,3,5,7,10,14,21,30,45,60],'Sequência alimentar','🗓️','dias seguidos');
