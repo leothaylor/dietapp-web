@@ -9,6 +9,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" type="image/svg+xml" href="./icon.svg" />
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./extras.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -19,6 +20,9 @@
         <button data-view="diario" class="nav-link active"><span class="nav-symbol">◫</span> Diário</button>
         <button data-view="alimentos" class="nav-link"><span class="nav-symbol">⌕</span> Alimentos</button>
         <button data-view="receitas" class="nav-link"><span class="nav-symbol">▤</span> Receitas</button>
+        <button data-view="evolucao" class="nav-link"><span class="nav-symbol">⚖</span> Evolução corporal</button>
+        <button data-view="hidratacao" class="nav-link"><span class="nav-symbol">♧</span> Hidratação</button>
+        <button data-view="medalhas" class="nav-link"><span class="nav-symbol">🏆</span> Medalhas</button>
         <button data-view="relatorios" class="nav-link"><span class="nav-symbol">▥</span> Relatórios</button>
         <button data-view="ajustes" class="nav-link"><span class="nav-symbol">⚙</span> Configurações</button>
       </nav>
@@ -38,37 +42,59 @@
           </div>
           <div class="section-heading meals-title"><div><span class="overline">REGISTROS</span><h2>Refeições do dia</h2></div><div class="action-row"><button type="button" class="btn btn-outline" id="add-meal-slot" aria-label="Adicionar nova refeição" title="Adicionar refeição">+ Nova refeição</button><button type="button" class="btn btn-primary" id="quick-add">+ Registrar alimento</button></div></div>
           <div id="meals-list" class="meal-grid"></div>
+          <div class="panel diary-actions"><div><h3>Atalhos do diário</h3><p class="muted">Copie refeições anteriores ou salve combinações que você usa com frequência.</p></div><div class="action-row"><button class="btn btn-outline" id="copy-meal-open">↺ Copiar de outra data</button><button class="btn btn-soft" id="favorite-create">☆ Salvar refeição favorita</button></div><div id="favorites-list" class="list-stack"></div></div>
         </section>
         <section id="view-alimentos" class="view" aria-label="Alimentos">
-          <div class="section-heading"><div><span class="overline">BIBLIOTECA</span><h2>Meus alimentos</h2></div><div class="action-row"><button class="btn btn-outline" id="barcode-open">▥ Escanear código</button><button class="btn btn-primary" id="food-create">+ Novo alimento</button></div></div>
+          <div class="section-heading"><div><span class="overline">BIBLIOTECA</span><h2>Meus alimentos</h2></div><div class="action-row"><button class="btn btn-outline" id="barcode-open">▥ Escanear código</button><button class="btn btn-outline" id="library-json-open">↑ Importar JSON GPT</button><button class="btn btn-primary" id="food-create">+ Novo alimento</button></div></div>
           <div class="panel search-panel"><label class="field"><span>Buscar por nome, marca ou código de barras</span><input id="food-search" type="search" placeholder="Ex.: arroz, banana, iogurte..." autocomplete="off" /></label><div class="help-line">Sua biblioteca é local. Você também pode buscar na TACO brasileira ou consultar produtos pelo código de barras.</div><div class="action-row"><button class="btn btn-soft" id="taco-load">Buscar na TACO (597 alimentos)</button><button class="btn btn-outline" id="barcode-manual">Consultar EAN / UPC</button></div><p id="food-search-status" class="muted small-text" role="status"></p></div>
           <div id="foods-list" class="list-stack"></div>
         </section>
         <section id="view-receitas" class="view" aria-label="Receitas">
           <div class="section-heading"><div><span class="overline">PREPARAÇÕES</span><h2>Receitas salvas</h2></div><button class="btn btn-primary" id="recipe-create">+ Criar receita</button></div>
           <div class="panel intro-panel"><strong>Receitas calculadas por rendimento</strong><p>Adicione ingredientes da sua biblioteca, informe seus pesos e o rendimento final em gramas. A receita passa a funcionar como um alimento reutilizável.</p></div>
-          <div id="recipes-list" class="list-stack"></div>
+          <p id="recipe-extra-note" class="help-line"></p><div id="recipes-list" class="list-stack"></div>
         </section>
+<section id="view-evolucao" class="view" aria-label="Evolução corporal">
+ <div class="section-heading"><div><span class="overline">ANTROPOMETRIA E TENDÊNCIAS</span><h2>Meu corpo em dados</h2></div><button id="body-create" class="btn btn-primary">+ Registrar avaliação</button></div>
+ <div id="body-summary" class="body-summary-grid"></div>
+ <div class="section-heading section-gap"><div><span class="overline">HISTÓRICO CORPORAL</span><h2>Gráficos de evolução</h2></div><label class="field compact-field">Período<select id="body-period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option><option value="180">180 dias</option><option value="all">Todo o período</option></select></label></div>
+ <div id="body-charts" class="body-charts"></div>
+ <div class="panel section-gap"><h3>Histórico de medições</h3><div id="body-history" class="list-stack"></div></div>
+ <p class="fine-print">Equações por circunferências produzem estimativas sujeitas a erro. Massa livre de gordura não é sinônimo de músculo. Use tendências repetidas, não pequenas oscilações isoladas.</p>
+</section>
+<section id="view-hidratacao" class="view" aria-label="Hidratação">
+ <div class="section-heading"><div><span class="overline">REGISTRO DIÁRIO</span><h2>Minha hidratação</h2></div><span id="water-date-label" class="muted"></span></div>
+ <div class="panel water-panel"><span class="overline">ÁGUA REGISTRADA HOJE</span><strong id="water-current" class="water-total">0 ml</strong><div id="water-goal" class="muted">Meta: —</div><div class="track water-track"><div id="water-fill" class="fill"></div></div><div class="water-buttons"><button data-water-add="150" class="btn btn-soft">+ 150 ml</button><button data-water-add="200" class="btn btn-soft">+ 200 ml</button><button data-water-add="300" class="btn btn-soft">+ 300 ml</button><button data-water-add="500" class="btn btn-soft">+ 500 ml</button><button data-water-add="1000" class="btn btn-soft">+ 1.000 ml</button></div>
+ <form id="water-form" class="water-form"><label class="field"><span>Outra quantidade (ml)</span><input name="ml" type="number" min="1" max="10000" step="1" required placeholder="Ex.: 400"></label><button class="btn btn-primary" type="submit">Registrar água</button></form><div id="water-entries" class="water-events"></div></div>
+ <div class="panel section-gap"><h3>Últimos 30 dias</h3><div id="water-chart"></div><p class="fine-print">A meta é individual. Registrar 3 L pode desbloquear uma medalha, mas não significa que essa quantidade seja necessária para todas as pessoas.</p></div>
+</section>
         <section id="view-relatorios" class="view" aria-label="Relatórios">
           <div class="section-heading"><div><span class="overline">EVOLUÇÃO</span><h2>Últimos 7 dias</h2></div></div>
           <div class="panel report-panel"><h3>Calorias registradas por dia</h3><div id="week-bars" class="week-bars"></div><p class="fine-print">Dias sem lançamentos aparecem sem consumo registrado; isso não significa ingestão alimentar zero.</p></div>
           <div class="panel report-panel"><div class="section-heading compact"><div><span class="overline">DISPONIBILIDADE DOS DADOS</span><h3>Micronutrientes do dia</h3></div></div><p class="fine-print">Valores parciais não são equivalentes ao total consumido. “Não informado” não significa zero.</p><div id="micro-list" class="micro-list"></div></div>
+<div class="panel report-panel" id="advanced-reports"><div class="section-heading"><div><span class="overline">ANÁLISE COMPARATIVA</span><h3>Médias e aderência às metas</h3></div><label class="field compact-field">Período<select id="analysis-period"><option value="7">7 dias</option><option value="30" selected>30 dias</option><option value="90">90 dias</option><option value="180">180 dias</option><option value="all">Todo o período</option></select></label></div><div id="analysis-summary"></div><div id="analysis-trends"></div><p id="analysis-adherence" class="help-line"></p><div id="analysis-comparison"></div><h3 class="section-gap">Cobertura dos micronutrientes</h3><div id="analysis-micros" class="micro-list"></div><div class="action-row section-gap"><button class="btn btn-soft" id="analysis-log">✓ Registrar análise do período</button><button class="btn btn-outline" data-csv-export="food">↓ CSV alimentação</button><button class="btn btn-outline" data-csv-export="body">↓ CSV peso e medidas</button><button class="btn btn-outline" data-csv-export="water">↓ CSV hidratação</button></div></div>
         </section>
+<section id="view-medalhas" class="view" aria-label="Medalhas">
+ <div class="section-heading"><div><span class="overline">PROGRESSO AUTOMÁTICO</span><h2>Minhas conquistas</h2></div><label class="field compact-field">Categoria<select id="awards-category"><option value="all">Todas</option><option value="diario">Consistência</option><option value="agua">Hidratação</option><option value="corpo">Evolução corporal</option><option value="composicao">Composição corporal</option><option value="biblioteca">Alimentos e receitas</option><option value="organizacao">Organização</option><option value="integradas">Combinadas</option></select></label></div>
+ <div class="panel awards-summary"><div><span class="overline">COLEÇÃO</span><h3 id="awards-summary">0 / 130 medalhas desbloqueadas</h3><p>Conquistas automáticas. Apenas registre seus dados normalmente; medalhas bloqueadas aparecem em escala de cinza.</p></div><div class="track"><div id="awards-fill" class="fill" style="width:0%"></div></div></div>
+ <div id="awards-grid" class="awards-grid section-gap"></div><div class="panel section-gap"><h3>Histórico das conquistas</h3><div id="awards-history" class="awards-history"></div></div>
+</section>
         <section id="view-ajustes" class="view" aria-label="Configurações">
           <div class="section-heading"><div><span class="overline">PREFERÊNCIAS E SEGURANÇA</span><h2>Configurações</h2></div></div>
           <div class="settings-grid">
             <form id="goals-form" class="panel" autocomplete="off"><h3>Metas diárias</h3><p class="muted">São parâmetros editáveis, não recomendações clínicas.</p><div class="form-grid"><label class="field"><span>Calorias (kcal)</span><input name="kcal" type="number" min="0" step="1" required /></label><label class="field"><span>Proteínas (g)</span><input name="protein" type="number" min="0" step="1" required /></label><label class="field"><span>Carboidratos (g)</span><input name="carbs" type="number" min="0" step="1" required /></label><label class="field"><span>Gorduras (g)</span><input name="fat" type="number" min="0" step="1" required /></label></div><button class="btn btn-primary" type="submit">Salvar metas</button></form>
             <div class="panel"><h3>Seus dados, sob seu controle</h3><p class="muted">O histórico não é enviado ao GitHub. A exportação JSON inclui seus alimentos, receitas, registros e metas.</p><div class="settings-buttons"><button class="btn btn-primary" id="export-json">↓ Exportar backup JSON</button><label class="btn btn-outline file-button">↑ Restaurar backup JSON<input id="import-json" type="file" accept=".json,application/json" hidden /></label></div><div class="notice">Importar um backup <strong>substitui todos os dados locais</strong> após sua confirmação. Guarde backups fora do navegador.</div><div id="storage-status" class="help-line"></div></div>
           </div>
+<form id="advanced-form" class="panel section-gap"><h3>Parâmetros corporais e metas de hidratação</h3><p class="muted">O sexo é usado somente para selecionar a equação US Navy. Valores de circunferência são estimativas, não diagnósticos.</p><div class="form-grid"><label class="field"><span>Sexo para cálculo</span><select name="sex"><option value="male">Masculino</option><option value="female">Feminino</option></select></label><label class="field"><span>Altura (cm)</span><input name="heightCm" type="number" min="100" max="250" step="0.1"></label><label class="field"><span>Meta pontual de peso (kg)</span><input name="weightGoal" type="number" min="1" max="300" step="0.01"></label><label class="field"><span>Peso mínimo da faixa (kg)</span><input name="weightLow" type="number" min="1" max="300" step="0.01"></label><label class="field"><span>Peso máximo da faixa (kg)</span><input name="weightHigh" type="number" min="1" max="300" step="0.01"></label><label class="field"><span>Meta de água (ml/dia)</span><input name="waterGoalMl" type="number" min="250" max="10000" step="50" required></label></div><button class="btn btn-primary" type="submit">Salvar parâmetros</button></form>
           <div class="panel source-panel"><h3>Fontes e critérios</h3><p>TACO / NEPA-UNICAMP via API estática de <a href="https://github.com/brolesi/taco" target="_blank" rel="noopener noreferrer">brolesi/taco</a>; dados de produtos via <a href="https://world.openfoodfacts.org/" target="_blank" rel="noopener noreferrer">Open Food Facts</a> (ODbL). Valores externos podem estar incompletos e devem ser conferidos com o rótulo.</p><p>Unidades nutricionais internas: valores por 100 g; sódio e minerais em mg; vitaminas conforme unidade indicada. Não se presume zero para campos ausentes.</p></div>
         </section>
       </main>
       <footer class="app-footer">Nutri • versão inicial · aplicativo pessoal offline-first · sem assinaturas</footer>
     </div>
   </div>
-  <nav class="mobile-nav" aria-label="Navegação móvel"><button class="active" data-view="diario">Diário</button><button data-view="alimentos">Alimentos</button><button data-view="receitas">Receitas</button><button data-view="relatorios">Análises</button><button data-view="ajustes">Ajustes</button></nav>
+  <nav class="mobile-nav" aria-label="Navegação móvel"><button class="active" data-view="diario">Diário</button><button data-view="alimentos">Alimentos</button><button data-view="receitas">Receitas</button><button data-view="evolucao">Corpo</button><button data-view="hidratacao">Água</button><button data-view="relatorios">Análises</button><button data-view="medalhas">Medalhas</button><button data-view="ajustes">Ajustes</button></nav>
   <div id="modal" class="modal" hidden><div class="modal-backdrop" data-close-modal></div><section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">Detalhes</h2><button type="button" class="icon-button" aria-label="Fechar" data-close-modal>×</button></div><div id="modal-body" class="modal-body"></div></section></div>
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div><div id="achievement-popup" class="achievement-popup" role="status" aria-live="polite" hidden></div>
   <script type="module" src="./app.js"></script>
 </body>
 </html>
