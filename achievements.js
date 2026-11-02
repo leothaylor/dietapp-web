@@ -49,8 +49,10 @@ function metrics(data){
  const threeLiterDays=[...water].filter(([k,v])=>v.ml>=3000).map(([k])=>k);
  const logs=data.events||{};
  const body=seriesMetrics(data.body||[]);
+ const prefs=data.prefs||{};const byDate=new Map((data.body||[]).filter(x=>x?.date&&x.weightKg>0).map(x=>[x.date,x]));
+ const weightGoalDays=[...byDate.values()].filter(x=>prefs.weightLow>0&&prefs.weightHigh>=prefs.weightLow?x.weightKg>=prefs.weightLow&&x.weightKg<=prefs.weightHigh:prefs.weightGoal>0&&Math.abs(x.weightKg-prefs.weightGoal)<=0.5).length;
  return {
-   diaryDays:diaryDays.length,diaryStreak:maxStreak(diaryDays),waterDays:hydrationDays.length,
+   diaryDays:diaryDays.length,diaryStreak:maxStreak(diaryDays),weightGoalDays,waterDays:hydrationDays.length,
    waterGoalDays:goalDays.length,waterGoalStreak:maxStreak(goalDays),
    threeLiterStreak:maxStreak(threeLiterDays),threeLiterDays:threeLiterDays.length,
    foods:foods.length,recipes:recipes.length,favorites:favorites.length,
@@ -74,8 +76,9 @@ function makeRules(){
  addSeries('agua','agua_registros','waterDays',[1,3,7,14,21,30,45,60,90,120],'Hidratação registrada','💧','dias');
  addSeries('agua','agua_meta','waterGoalDays',[1,3,7,14,21,30,45,60,90,120],'Metas de água atingidas','🚰','dias');
  addSeries('agua','agua_3l','threeLiterStreak',[1,2,3,5,7,10,14,21,30,60],'3 litros consecutivos','🌊','dias seguidos');
- addSeries('corpo','peso_registros','weighDays',[1,2,3,5,7,10,14,20,30,52],'Pesagens registradas','⚖️','dias');
- addSeries('corpo','medidas_registros','measureDays',[1,2,3,5,7,10,14,20,30,52],'Avaliações com medidas','📏','dias');
+ addSeries('corpo','peso_registros','weighDays',[1,2,3,5,7,10,20,52],'Pesagens registradas','⚖️','dias');
+ addSeries('corpo','medidas_registros','measureDays',[1,2,3,5,7,10,20,52],'Avaliações com medidas','📏','dias');
+ addSeries('corpo','peso_meta','weightGoalDays',[1,3,7,14],'Peso dentro da meta','🎯','pesagens');
  addSeries('composicao','gordura_reducao','fatLost',[0.5,1,1.5,2,3,4,5],'Redução de gordura estimada','🔥','kg',{requiresComparison:true});
  addSeries('composicao','magra_aumento','leanGained',[0.5,1,1.5,2,3,4,5],'Aumento de massa livre de gordura estimada','💪','kg',{requiresComparison:true});
  addSeries('composicao','recomp','recomp',[1,2,3,5],'Recomposição sugerida pela cintura','🧬','cm',{requiresComparison:true});
