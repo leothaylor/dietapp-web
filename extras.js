@@ -2,8 +2,8 @@
 import {ACHIEVEMENTS,CATEGORY_LABELS,evaluateAchievements,bodyComposition,movingWeight} from './achievements.js';
 import {searchUsda,fetchUsdaFood} from './usda.js';
 let api;
-export const extra={body:[],water:[],favorites:[],awards:[],prefs:null,period:'30',analysisPeriod:'30'};
 const DEFAULT_PREFS={id:'advanced',heightCm:null,sex:'male',weightGoal:null,weightLow:null,weightHigh:null,waterGoalMl:2500,events:{backupDates:[],csvDates:[],reportDates:[],importDates:[]}};
+export const extra={body:[],water:[],favorites:[],awards:[],prefs:{...DEFAULT_PREFS},period:'30',analysisPeriod:'30'};
 const e=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
 const get=(s,root=document)=>root.querySelector(s);
 const all=(s,root=document)=>[...root.querySelectorAll(s)];
@@ -258,6 +258,7 @@ async function importLibrary(){
 async function onExtraSubmit(evt){
  const f=evt.target;if(!['body-form','advanced-form','water-form','favorite-form','copy-form','usda-form'].includes(f.id))return;
  evt.preventDefault();evt.stopPropagation();
+ if(!api?.isReady?.()){api?.notify?.('Banco local indisponível. Feche outras abas do Nutri sem apagar seus dados.',true);return}
  try{
  if(f.id==='usda-form'){
    const result=get('#usda-results');result.textContent='Pesquisando USDA...';
@@ -307,7 +308,7 @@ async function onExtraSubmit(evt){
  }catch(err){api.notify('Erro: '+err.message,true)}
 }
 async function onExtraClick(evt){
- const b=evt.target.closest('button');if(!b)return;
+ const b=evt.target.closest('button');if(!b||!api?.isReady?.())return;
  try{
  if(b.id==='body-create')bodyForm();
  else if(b.dataset.editBody)bodyForm(extra.body.find(x=>x.id===b.dataset.editBody));
