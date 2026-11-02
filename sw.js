@@ -1,5 +1,5 @@
 /* Cache somente arquivos do app. Os dados privados ficam no IndexedDB local. */
-const CACHE='nutri-main-shell-v4-20261102';
+const CACHE='nutri-main-shell-v5-20261102';
 const SHELL=['./','./index.html','./styles.css','./app.js','./extras.js','./achievements.js','./usda.js','./extras.css','./icon.svg','./manifest.webmanifest'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('nutri-main-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
