@@ -105,7 +105,7 @@ function renderWater(){
  get('#water-current').textContent=fmt(total,0)+' ml';
  get('#water-goal').textContent='Meta: '+fmt(goal,0)+' ml · '+fmt(Math.min(100,total/goal*100),0)+'%';
  get('#water-fill').style.width=Math.min(100,total/goal*100)+'%';
- get('#water-entries').innerHTML=extra.water.filter(x=>x.date===date).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(x=>'<div class="water-event">'+fmt(x.ml,0)+' ml <small>'+e(x.createdAt.slice(11,16))+'</small><button class="delete-button" data-delete-water="'+e(x.id)+'" aria-label="Excluir água">×</button></div>').join('')||'<p class="muted">Ainda não há água registrada nesta data.</p>';
+ get('#water-entries').innerHTML=extra.water.filter(x=>x.date===date).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(x=>'<div class="water-event">'+fmt(x.ml,0)+' ml <small>'+e(new Date(x.createdAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}))+'</small><button class="delete-button" data-delete-water="'+e(x.id)+'" aria-label="Excluir água">×</button></div>').join('')||'<p class="muted">Ainda não há água registrada nesta data.</p>';
  const days=Array.from({length:30},(_,i)=>{const d=dayDate(date);d.setDate(d.getDate()-29+i);const key=iso(d);return {date:key,value:valsByDay(key)}});
  get('#water-chart').innerHTML=barChart(days,'Água consumida','ml',30);
 }
@@ -191,7 +191,7 @@ function showAward(award){
  setTimeout(()=>{if(get('#achievement-popup')===box)box.hidden=true},7200);
 }
 async function syncAchievements(notifyNew){
- const calculated=evaluateAchievements({entries:api.state.entries,foods:api.state.foods,recipes:api.state.recipes,body:extra.body,water:extra.water,favorites:extra.favorites,events:extra.prefs.events});
+ const calculated=evaluateAchievements({entries:api.state.entries,foods:api.state.foods,recipes:api.state.recipes,body:extra.body,water:extra.water,favorites:extra.favorites,events:extra.prefs.events,prefs:extra.prefs});
  const earned=new Set(calculated.filter(x=>x.unlocked).map(x=>x.id));
  const previous=new Map(extra.awards.map(x=>[x.id,x]));
  const missing=calculated.filter(x=>x.unlocked&&!previous.has(x.id));
@@ -204,16 +204,16 @@ async function syncAchievements(notifyNew){
 }
 function renderAwards(){
  const selected=get('#awards-category')?.value||'all';
- const rules=evaluateAchievements({entries:api.state.entries,foods:api.state.foods,recipes:api.state.recipes,water:extra.water,body:extra.body,favorites:extra.favorites,events:extra.prefs.events});
+ const rules=evaluateAchievements({entries:api.state.entries,foods:api.state.foods,recipes:api.state.recipes,water:extra.water,body:extra.body,favorites:extra.favorites,events:extra.prefs.events,prefs:extra.prefs});
  const unlocked=new Set(extra.awards.map(x=>x.id));
  const count=rules.filter(x=>unlocked.has(x.id)).length;
  get('#awards-summary').textContent=count+' / '+rules.length+' medalhas desbloqueadas';
  get('#awards-fill').style.width=(count/rules.length*100)+'%';
  const shown=rules.filter(r=>selected==='all'||selected===r.category).sort((a,b)=>Number(unlocked.has(b.id))-Number(unlocked.has(a.id))||a.category.localeCompare(b.category)||a.target-b.target);
  get('#awards-grid').innerHTML=shown.map(x=>{const yes=unlocked.has(x.id),date=extra.awards.find(r=>r.id===x.id)?.unlockedAt?.slice(0,10);
- return '<article class="achievement-card'+(yes?' earned':' locked')+'"><div class="achievement-icon" aria-hidden="true">'+x.icon+'</div><strong>'+e(x.name)+'</strong><small>'+e(x.description)+'</small><span class="achievement-category">'+e(CATEGORY_LABELS[x.category])+'</span>'+(yes?'<span class="achievement-date">Conquistada em '+e(date||'')+'</span>':'<div class="progress-track"><div class="progress-fill" style="width:'+Math.min(100,Math.round(x.progress*100))+'%"></div></div><span class="achievement-date">'+Math.round(x.progress*100)+'% concluído</span>')+(x.confidence?'<span class="achievement-note">Estimativa antropométrica</span>':'')+'</article>'
+ return '<article class="achievement-card'+(yes?' earned':' locked')+'"><div class="achievement-icon" aria-hidden="true">'+x.icon+'</div><strong>'+e(x.name)+'</strong><small>'+e(x.description)+'</small><span class="achievement-category">'+e(CATEGORY_LABELS[x.category])+'</span>'+(yes?'<span class="achievement-date">Conquistada em '+e(date?new Date(date+'T12:00:00').toLocaleDateString('pt-BR'):'')+'</span>':'<div class="progress-track"><div class="progress-fill" style="width:'+Math.min(100,Math.round(x.progress*100))+'%"></div></div><span class="achievement-date">'+Math.round(x.progress*100)+'% concluído</span>')+(x.confidence?'<span class="achievement-note">Estimativa antropométrica</span>':'')+'</article>'
  }).join('');
- get('#awards-history').innerHTML=[...extra.awards].sort((a,b)=>b.unlockedAt.localeCompare(a.unlockedAt)).slice(0,35).map(x=>{const d=rules.find(r=>r.id===x.id);return d?'<div class="history-item"><span>'+d.icon+' '+e(d.name)+'</span><small>'+e(x.unlockedAt.slice(0,10))+'</small></div>':''}).join('')||'<p class="muted">Suas medalhas aparecerão aqui automaticamente.</p>';
+ get('#awards-history').innerHTML=[...extra.awards].sort((a,b)=>b.unlockedAt.localeCompare(a.unlockedAt)).slice(0,35).map(x=>{const d=rules.find(r=>r.id===x.id);return d?'<div class="history-item"><span>'+d.icon+' '+e(d.name)+'</span><small>'+e(new Date(x.unlockedAt).toLocaleDateString('pt-BR'))+'</small></div>':''}).join('')||'<p class="muted">Suas medalhas aparecerão aqui automaticamente.</p>';
 }
 function parsePortions(text){
  const lines=String(text||'').split(/\r?\n/).map(v=>v.trim()).filter(Boolean);
