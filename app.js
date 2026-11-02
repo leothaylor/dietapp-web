@@ -267,6 +267,8 @@ setupExtras({state,request,refresh,notify,modal,closeModal,db:()=>db,switchView,
  updateNetwork();
  const initialView=location.hash.slice(1)||'diario';
  setStorageStatus('loading');
+ // Atualizar o service worker antes de esperar pelo IndexedDB; outra aba pode bloquear a migração.
+ if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('Service Worker:',err));
  // Renderizar a prévia de medalhas mesmo antes da abertura do banco, sem permitir gravações.
  switchView(initialView);
  try{
@@ -275,7 +277,6 @@ setupExtras({state,request,refresh,notify,modal,closeModal,db:()=>db,switchView,
   appReady=true;
   setStorageStatus('ready');
   switchView(initialView);
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('Service Worker:',err));
   const cache=await request('cache','get','taco-index');
   if(cache?.foods?.length)state.tacoIndex=cache.foods;
   if(state.view==='alimentos')renderFoods();
