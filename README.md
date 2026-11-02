@@ -1,6 +1,6 @@
 # Nutri — Diário nutricional pessoal (MVP)
 
-Aplicativo PWA independente, localizado em `dietapp-web/nutri/`. **Não altera o DietApp antigo na raiz do repositório.**
+Aplicativo PWA independente, publicado na raiz de `dietapp-web/`. **Não altera o DietApp antigo na raiz do repositório.**
 
 ## Funcionalidades implementadas
 
@@ -16,7 +16,7 @@ Aplicativo PWA independente, localizado em `dietapp-web/nutri/`. **Não altera o
 ## Publicação e execução
 
 GitHub Pages: se o repositório estiver publicado a partir de `main` e `/ (root)`, abrir:
-`https://leothaylor.github.io/dietapp-web/nutri/`
+`https://leothaylor.github.io/dietapp-web/`
 
 Caso Pages não esteja ativado, em **Settings → Pages → Build and deployment → Deploy from a branch → main / (root)**.
 
@@ -24,7 +24,7 @@ Localmente, sirva a raiz do repositório por HTTP (não abra com file://, pois P
 
 ```bash
 python -m http.server 8000
-# abrir http://localhost:8000/nutri/
+# abrir http://localhost:8000/
 ```
 
 ## Dados e privacidade
@@ -65,3 +65,12 @@ Não há cópia de código do OpenNutriTracker, NutriTrace ou wger.
 8. Desligar a internet após o primeiro carregamento; confirmar que o app abre e os dados locais permanecem acessíveis.
 
 **Status:** código inicial publicado; testes reais no iPhone e ativação do Pages precisam ser conferidos no dispositivo/ambiente publicado.
+
+## Refeições personalizáveis
+
+- O botão **+ Nova refeição** cria espaços reutilizáveis em todos os dias.
+- O ícone de lápis renomeia qualquer refeição; o ID permanece estável e preserva lançamentos antigos.
+- Espaços personalizados podem ser excluídos somente se não houver registros associados em nenhuma data.
+- O backup JSON inclui nomes e ordem dos espaços. Arquivos de backup anteriores continuam aceitos com nomes padrão.
+- A migração de `/nutri/` para a raiz mantém o mesmo IndexedDB da origem do site, sem migração de dados, desde que navegador, perfil e domínio sejam os mesmos.
+- Os arquivos antigos (login Supabase e componentes DietApp) deixam de ser servidos na raiz.
