@@ -183,12 +183,15 @@ function csvExport(kind){
  a.href=url;a.download='nutri-'+kind+'-'+api.state.date+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
  logEvent('csvDates').then(()=>persist()).catch(()=>{});api.notify('CSV exportado para o dispositivo.');
 }
+const pendingAwards=[];let awardShowing=false;
+function queueAwards(items){if(items.length>5){showAward({icon:'🏆',name:items.length+' medalhas desbloqueadas',description:'Veja todas na aba Medalhas.'});return}pendingAwards.push(...items);if(!awardShowing)nextAward()}
+function nextAward(){const next=pendingAwards.shift();if(!next){awardShowing=false;return}awardShowing=true;showAward(next);setTimeout(nextAward,4300)}
 function showAward(award){
  const box=get('#achievement-popup');if(!box)return;
  box.innerHTML='<div class="award-symbol">'+award.icon+'</div><div><small>MEDALHA DESBLOQUEADA</small><strong>'+e(award.name)+'</strong><span>'+e(award.description)+'</span></div><button data-close-award aria-label="Fechar medalha">×</button>';
  box.hidden=false;
  if(matchMedia('(prefers-reduced-motion: reduce)').matches)box.classList.add('no-motion');else box.classList.remove('no-motion');
- setTimeout(()=>{if(get('#achievement-popup')===box)box.hidden=true},7200);
+ clearTimeout(showAward.hideTimer);showAward.hideTimer=setTimeout(()=>{if(get('#achievement-popup')===box)box.hidden=true},3900);
 }
 async function syncAchievements(notifyNew){
  const calculated=evaluateAchievements({entries:api.state.entries,foods:api.state.foods,recipes:api.state.recipes,body:extra.body,water:extra.water,favorites:extra.favorites,events:extra.prefs.events,prefs:extra.prefs});
@@ -200,7 +203,7 @@ async function syncAchievements(notifyNew){
  for(const item of revoked)await api.request('awards','delete',item.id);
  for(const item of missing){const record={id:item.id,unlockedAt:new Date().toISOString()};await api.request('awards','put',record)}
  extra.awards=[...extra.awards.filter(x=>earned.has(x.id)),...missing.map(x=>({id:x.id,unlockedAt:new Date().toISOString()}))];
- if(notifyNew&&missing.length)showAward(missing.at(-1));
+ if(notifyNew&&missing.length)queueAwards(missing);
 }
 function renderAwards(){
  const selected=get('#awards-category')?.value||'all';
