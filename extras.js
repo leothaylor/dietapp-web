@@ -43,6 +43,7 @@ export async function refreshExtras({notifyAwards=false}={}){
  await syncAchievements(notifyAwards);
 }
 export function setupExtras(context){api=context;document.addEventListener('click',onExtraClick);document.addEventListener('submit',onExtraSubmit);document.addEventListener('change',onExtraChange)}
+export async function markBackup(){await logEvent('backupDates');await persist()}
 async function logEvent(kind){const date=api.state.date;const events={...extra.prefs.events};const values=new Set(events[kind]||[]);values.add(date);events[kind]=[...values].sort();extra.prefs={...extra.prefs,events};await api.request('settings','put',extra.prefs)}
 async function persist(){await api.refresh()}
 function daysAgo(date,days){if(days==='all')return true;const delta=Math.round((dayDate(api.state.date)-dayDate(date))/86400000);return delta>=0&&delta<Number(days)}
