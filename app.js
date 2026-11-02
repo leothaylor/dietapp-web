@@ -34,8 +34,41 @@ function blankNutrients(){return Object.fromEntries(KEYS.map(k=>[k,null]))}
 function normalized(raw){const n=blankNutrients();for(const k of KEYS){if(Object.prototype.hasOwnProperty.call(raw||{},k))n[k]=safeNumber(raw[k])}return n}
 function calcTotal(items,key){let value=0,known=0;for(const item of items){const x=item.nutrients?.[key];if(typeof x==='number'&&Number.isFinite(x)){known++;value+=x}}return {value,known,total:items.length,complete:known===items.length}}
 function scale(src,grams){const factor=grams/100;const out=blankNutrients();for(const k of KEYS){out[k]=typeof src?.[k]==='number'?Math.round(src[k]*factor*100000)/100000:null}return out}
-function request(store,method,arg){return new Promise((resolve,reject)=>{const t=db.transaction(store,method==='getAll'||method==='get'?'readonly':'readwrite');const object=t.objectStore(store);let result;let req;if(method==='getAll')req=object.getAll();else if(method==='get')req=object.get(arg);else if(method==='put')req=object.put(arg);else if(method==='delete')req=object.delete(arg);else req=object.clear();req.onsuccess=()=>{result=req.result};t.oncomplete=()=>resolve(result);t.onerror=()=>reject(t.error||new Error('Falha no armazenamento local'));t.onabort=()=>reject(t.error||new Error('Operação interrompida'))})}
-function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,DB_VERSION);r.onupgradeneeded=()=>{const d=r.result;for(const store of ['foods','recipes','entries','settings','cache','body','water','favorites','awards']){if(!d.objectStoreNames.contains(store))d.createObjectStore(store,{keyPath:'id'})}};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+function request(store,method,arg){return new Promise((resolve,reject)=>{if(!db){reject(new Error('Banco de dados ainda não está pronto. Feche outras abas do Nutri e atualize esta página, sem limpar os dados.'));return}const t=db.transaction(store,method==='getAll'||method==='get'?'readonly':'readwrite');const object=t.objectStore(store);let result;let req;if(method==='getAll')req=object.getAll();else if(method==='get')req=object.get(arg);else if(method==='put')req=object.put(arg);else if(method==='delete')req=object.delete(arg);else req=object.clear();req.onsuccess=()=>{result=req.result};t.oncomplete=()=>resolve(result);t.onerror=()=>reject(t.error||new Error('Falha no armazenamento local'));t.onabort=()=>reject(t.error||new Error('Operação interrompida'))})}
+function setStorageStatus(mode,message=''){
+ const panel=$('#storage-warning'),title=$('#storage-warning-title'),body=$('#storage-warning-text'),reload=$('#storage-reload');
+ if(!panel)return;
+ const states={
+  loading:['Preparando seus dados','O Nutri está abrindo o banco de dados local. Não registre informações até concluir.'],
+  blocked:['Atualização bloqueada por outra aba','Feche todas as outras abas do Nutri (inclusive versões antigas ou instaladas como app) e volte a esta aba. O banco será liberado automaticamente. NÃO limpe os dados do navegador.'],
+  stale:['Esta aba precisa ser atualizada','Outra aba atualizou a estrutura do banco local. Feche as outras abas e atualize esta página, sem apagar dados.'],
+  error:['Falha na abertura do banco','Não foi possível acessar o banco local. Feche as outras abas do Nutri e recarregue esta página. Não limpe o armazenamento.'],
+  ready:['','']
+ };
+ const [heading,detail]=states[mode]||states.error;
+ panel.hidden=mode==='ready';panel.dataset.status=mode;title.textContent=heading;body.textContent=message||detail;
+ if(reload)reload.hidden=mode==='loading';
+}
+function openDb(){return new Promise((resolve,reject)=>{
+ let req;
+ try{req=indexedDB.open(DB_NAME,DB_VERSION)}catch(err){reject(err);return}
+ req.onblocked=()=>setStorageStatus('blocked');
+ req.onupgradeneeded=()=>{const database=req.result;
+  for(const store of ['foods','recipes','entries','settings','cache','body','water','favorites','awards']){
+   if(!database.objectStoreNames.contains(store))database.createObjectStore(store,{keyPath:'id'});
+  }
+ };
+ req.onsuccess=()=>{
+  const connection=req.result;
+  connection.onversionchange=()=>{
+   connection.close();
+   if(db===connection){db=undefined;appReady=false}
+   setStorageStatus('stale');
+  };
+  resolve(connection);
+ };
+ req.onerror=()=>reject(req.error||new Error('Falha ao abrir o IndexedDB'));
+})}
 async function refresh(){[state.foods,state.recipes,state.entries]=await Promise.all(['foods','recipes','entries'].map(s=>request(s,'getAll')));state.goals=(await request('settings','get','goals'))||{...DEFAULT_GOALS};const savedMeals=await request('settings','get','meals');state.meals=validMeals(savedMeals?.items)?savedMeals.items.map(m=>({id:m.id,label:m.label.trim()})):DEFAULT_MEALS.map(m=>({...m}));await refreshExtras({notifyAwards:appReady});render()}
 function notify(text,error=false){const el=$('#toast');el.textContent=text;el.className='toast'+(error?' error':'');el.hidden=false;clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.hidden=true,4200)}
 function closeModal(){stopScanner();$('#modal').hidden=true;$('#modal-body').innerHTML=''}
@@ -133,7 +166,7 @@ function recipeForm(recipe=null){
 function parseFields(f){const n=blankNutrients();for(const k of KEYS)n[k]=safeNumber(f.elements.namedItem(k)?.value);return n}
 function validateGrams(v){return typeof v==='number'&&Number.isFinite(v)&&v>0&&v<=100000}
 async function onFormSubmit(e){
- e.preventDefault();const f=e.target;
+ e.preventDefault();if(!appReady){notify('O banco ainda está sendo preparado. Feche outras abas do Nutri e aguarde a liberação.',true);return}const f=e.target;
  try{
  if(f.id==='meal-form'){const label=f.elements.label.value.trim();const id=f.dataset.mealId;if(!label||label.length>48)throw Error('Use um nome de 1 a 48 caracteres.');if(id){const items=state.meals.map(m=>m.id===id?{...m,label}:m);await saveMeals(items)}else{const items=[...state.meals,{id:'meal_'+uid().replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60),label}];await saveMeals(items)}closeModal();notify(id?'Refeição renomeada.':'Nova refeição adicionada.');return}
  if(f.id==='food-form'){const name=f.elements.name.value.trim();if(!name)throw Error('Informe o nome do alimento.');const id=f.dataset.editId||uid();const old=state.foods.find(x=>x.id===id);const food={id,name,brand:f.elements.brand.value.trim(),barcode:f.elements.barcode.value.trim(),source:old?.source||'manual',sourceUrl:old?.sourceUrl||'',tacoId:old?.tacoId,nutrients:parseFields(f),portions:readPortions(f.elements.portions.value),updatedAt:new Date().toISOString()};await request('foods','put',food);closeModal();await refresh();notify('Alimento salvo com sucesso.');}
@@ -194,6 +227,8 @@ async function onClick(e){
  if(e.target.closest('[data-close-modal]')){closeModal();return}
  const nav=e.target.closest('[data-view]');if(nav){switchView(nav.dataset.view);return}
  const button=e.target.closest('button');if(!button)return;
+ if(button.id==='storage-reload'){location.reload();return}
+ if(!appReady){notify('Banco local indisponível. Feche as outras abas do Nutri; não apague os dados do site.',true);return}
  try{
  if(button.id==='prev-date')adjustDate(-1);
  else if(button.id==='next-date')adjustDate(1);
@@ -227,5 +262,28 @@ $('#import-json').addEventListener('change',e=>importJson(e.target.files?.[0]));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#modal').hidden)closeModal()});
 window.addEventListener('online',updateNetwork);window.addEventListener('offline',updateNetwork);
 window.addEventListener('hashchange',()=>switchView(location.hash.slice(1)||'diario'));
-setupExtras({state,request,refresh,notify,modal,closeModal,db:()=>db,switchView});
-(async function init(){try{db=await openDb();await refresh();appReady=true;switchView(location.hash.slice(1)||'diario');updateNetwork();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});const cache=await request('cache','get','taco-index');if(cache?.foods?.length)state.tacoIndex=cache.foods;if(state.view==='alimentos')renderFoods()}catch(err){console.error(err);notify('Não foi possível iniciar o banco local. Verifique permissões do navegador.',true)}})();
+setupExtras({state,request,refresh,notify,modal,closeModal,db:()=>db,switchView,isReady:()=>appReady});
+(async function init(){
+ updateNetwork();
+ const initialView=location.hash.slice(1)||'diario';
+ setStorageStatus('loading');
+ // Renderizar a prévia de medalhas mesmo antes da abertura do banco, sem permitir gravações.
+ switchView(initialView);
+ try{
+  db=await openDb();
+  await refresh();
+  appReady=true;
+  setStorageStatus('ready');
+  switchView(initialView);
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(err=>console.warn('Service Worker:',err));
+  const cache=await request('cache','get','taco-index');
+  if(cache?.foods?.length)state.tacoIndex=cache.foods;
+  if(state.view==='alimentos')renderFoods();
+ }catch(err){
+  console.error('Inicialização do armazenamento Nutri:',err);
+  setStorageStatus('error',err?.name==='VersionError'
+   ?'Existe uma versão mais nova do banco neste navegador. Feche todas as abas do Nutri e atualize. Seus dados não serão apagados.'
+   :'Erro ao abrir os dados locais: '+(err?.message||'erro desconhecido')+'. Não limpe os dados do site.');
+  notify('Falha ao abrir o banco local. Veja o aviso no topo.',true);
+ }
+})();
