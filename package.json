@@ -1,0 +1,11 @@
+{
+  "name": "nutri-pessoal",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA nutricional local-first",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check app.js && node --check extras.js && node --check achievements.js && node --check usda.js && node --test tests/*.test.js"
+  }
+}
