@@ -29,12 +29,12 @@ test('IndexedDB bloqueado apresenta aviso sem tentar gravar antes da abertura',a
     createObjectStore(){}
   };
   const idb={open(){return request}};
-  const run=new Function('indexedDB','document','request','connection',\`
+  const run=new Function('indexedDB','document','request','connection',`
     return (async()=>{
       let db,appReady=true;
       const $=sel=>document.querySelector(sel);
       const DB_NAME='nutri-diario-v1',DB_VERSION=2;
-      \${openSource}
+      ${openSource}
       const pending=openDb();
       request.onblocked();
       const blocked=document.querySelector('#storage-warning').dataset.status==='blocked';
@@ -43,7 +43,7 @@ test('IndexedDB bloqueado apresenta aviso sem tentar gravar antes da abertura',a
       db.onversionchange();
       return {blocked,closed:connection.closed,ready:appReady,stale:document.querySelector('#storage-warning').dataset.status==='stale'};
     })();
-  \`);
+  `);
   const result=await run(idb,{querySelector:x=>elements[x]},request,connection);
   assert.deepEqual(result,{blocked:true,closed:true,ready:false,stale:true});
 });
