@@ -56,16 +56,17 @@ function goalWeightText(weight){
  const p=extra.prefs; if(p.weightLow!=null&&p.weightHigh!=null&&p.weightLow>0&&p.weightHigh>=p.weightLow)return weight>=p.weightLow&&weight<=p.weightHigh?'Dentro da faixa':weight<p.weightLow?'Faltam '+fmt(p.weightLow-weight)+' kg para a faixa':fmt(weight-p.weightHigh)+' kg acima da faixa';
  return p.weightGoal!=null&&p.weightGoal>0?'Distância até a meta: '+fmt(Math.abs(weight-p.weightGoal))+' kg':'Defina sua meta de peso nos ajustes';
 }
-function chart(data,key,title,unit='',height=170){
+function chart(data,key,title,unit='',height=170,reference=null){
  const a=data.filter(x=>x[key]!==null&&x[key]!==undefined&&Number.isFinite(+x[key])).slice().sort((x,y)=>x.date.localeCompare(y.date));
  if(!a.length)return '<div class="empty-state"><strong>'+e(title)+'</strong>Sem dados suficientes para o gráfico.</div>';
  let min=Math.min(...a.map(x=>+x[key])),max=Math.max(...a.map(x=>+x[key]));
- const pad=Math.max((max-min)*.16,Math.max(.3,Math.abs(max)*.01));min-=pad;max+=pad;
+ if(typeof reference==='number'&&Number.isFinite(reference)){min=Math.min(min,reference);max=Math.max(max,reference)}const pad=Math.max((max-min)*.16,Math.max(.3,Math.abs(max)*.01));min-=pad;max+=pad;
  const W=650,H=height,low=H-30,top=14,spread=Math.max(1,max-min);
  const points=a.map((x,i)=>({x:35+(a.length===1?.5:i/(a.length-1))*(W-58),y:low-(x[key]-min)/spread*(low-top),record:x}));
  const line=points.map(p=>p.x.toFixed(2)+','+p.y.toFixed(2)).join(' ');
  const dots=points.map(p=>'<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="3.2" fill="#60c3aa"><title>'+e(p.record.date)+' — '+fmt(p.record[key],2)+' '+e(unit)+'</title></circle>').join('');
- return '<div class="chart-shell"><div class="chart-name">'+e(title)+' <span>'+fmt(a.at(-1)[key],2)+' '+e(unit)+'</span></div><svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+e(title)+' ao longo do tempo"><line x1="35" x2="'+(W-22)+'" y1="'+low+'" y2="'+low+'" stroke="#36506a"/><line x1="35" x2="'+(W-22)+'" y1="'+top+'" y2="'+top+'" stroke="#24394b" stroke-dasharray="3,5"/><polyline points="'+line+'" fill="none" stroke="#60c3aa" stroke-width="2.9" stroke-linejoin="round" stroke-linecap="round"/>'+dots+'<text x="35" y="'+(H-8)+'" fill="#93a7b6" font-size="12">'+e(a[0].date.slice(5))+'</text><text x="'+(W-92)+'" y="'+(H-8)+'" fill="#93a7b6" font-size="12">'+e(a.at(-1).date.slice(5))+'</text><text x="3" y="25" fill="#93a7b6" font-size="11">'+fmt(max,1)+'</text><text x="3" y="'+(low-3)+'" fill="#93a7b6" font-size="11">'+fmt(min,1)+'</text></svg></div>';
+ const refLine=typeof reference==='number'&&Number.isFinite(reference)?'<line x1="35" x2="'+(W-22)+'" y1="'+(low-(reference-min)/spread*(low-top))+'" y2="'+(low-(reference-min)/spread*(low-top))+'" stroke="#e9b46a" stroke-width="1.6" stroke-dasharray="7,5"/>':'';
+ return '<div class="chart-shell"><div class="chart-name">'+e(title)+' <span>'+fmt(a.at(-1)[key],2)+' '+e(unit)+'</span></div><svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+e(title)+' ao longo do tempo"><line x1="35" x2="'+(W-22)+'" y1="'+low+'" y2="'+low+'" stroke="#36506a"/><line x1="35" x2="'+(W-22)+'" y1="'+top+'" y2="'+top+'" stroke="#24394b" stroke-dasharray="3,5"/>'+refLine+'<polyline points="'+line+'" fill="none" stroke="#60c3aa" stroke-width="2.9" stroke-linejoin="round" stroke-linecap="round"/>'+dots+'<text x="35" y="'+(H-8)+'" fill="#93a7b6" font-size="12">'+e(a[0].date.slice(5))+'</text><text x="'+(W-92)+'" y="'+(H-8)+'" fill="#93a7b6" font-size="12">'+e(a.at(-1).date.slice(5))+'</text><text x="3" y="25" fill="#93a7b6" font-size="11">'+fmt(max,1)+'</text><text x="3" y="'+(low-3)+'" fill="#93a7b6" font-size="11">'+fmt(min,1)+'</text></svg></div>';
 }
 function barChart(points,label,unit='',maxBars=30){
  const list=points.slice(-maxBars),max=Math.max(1,...list.map(x=>x.value||0));
@@ -95,11 +96,11 @@ function renderBody(){
  ];
  get('#body-summary').innerHTML=cards.map(([title,value,caption])=>'<article class="panel metric-box"><div class="overline">'+e(title)+'</div><strong>'+e(value)+'</strong><small>'+e(caption)+'</small></article>').join('');
  const subset=rows.filter(x=>daysAgo(x.date,extra.period));
- get('#body-charts').innerHTML=[['weightKg','Peso corporal','kg'],['waistCm','Cintura','cm'],['bodyFatPct','Percentual de gordura estimado','%'],['fatKg','Massa gorda estimada','kg'],['leanKg','Massa livre de gordura estimada','kg']].map(([key,title,unit])=>chart(subset,key,title,unit)).join('');
+ get('#body-charts').innerHTML=[['weightKg','Peso corporal','kg'],['waistCm','Cintura','cm'],['bodyFatPct','Percentual de gordura estimado','%'],['fatKg','Massa gorda estimada','kg'],['leanKg','Massa livre de gordura estimada','kg']].map(([key,title,unit])=>chart(subset,key,title,unit,170,key==='weightKg'&&p.weightGoal>0?p.weightGoal:null)).join('');
  get('#body-history').innerHTML=rows.length?rows.slice().reverse().map(x=>'<article class="list-row"><div><strong>'+e(x.date)+' · '+fmt(x.weightKg,2)+' kg</strong><small>Cintura '+fmt(x.waistCm)+' cm · Pescoço '+fmt(x.neckCm)+' cm · BF '+fmt(x.bodyFatPct)+' %'+(x.bodyFatMethod==='navy'?' (US Navy)':' (informado)')+'</small></div><div class="row-actions"><button class="btn btn-outline small" data-edit-body="'+e(x.id)+'">Editar</button><button class="icon-button" data-delete-body="'+e(x.id)+'" aria-label="Excluir medição">×</button></div></article>').join(''):'<div class="empty-state"><strong>Sem avaliações corporais</strong>Cadastre seu peso e suas medidas para acompanhar as tendências.</div>';
 }
 function renderWater(){
- const date=api.state.date;const total=valsByDay(date),goal=extra.prefs.waterGoalMl;
+ const date=api.state.date;get('#water-selected-date').value=date;const total=valsByDay(date),goal=extra.prefs.waterGoalMl;
  get('#water-date-label').textContent='Data selecionada: '+date;
  get('#water-current').textContent=fmt(total,0)+' ml';
  get('#water-goal').textContent='Meta: '+fmt(goal,0)+' ml · '+fmt(Math.min(100,total/goal*100),0)+'%';
@@ -141,6 +142,14 @@ function renderAdvancedReports(){
  const latest=measured().filter(x=>daysAgo(x.date,period));
  get('#analysis-comparison').innerHTML=latest.length>=2?'<p>Peso: '+fmt(latest[0].weightKg,2)+' → '+fmt(latest.at(-1).weightKg,2)+' kg. Cintura: '+fmt(latest[0].waistCm)+' → '+fmt(latest.at(-1).waistCm)+' cm.</p>':'<p class="muted">Cadastre ao menos duas avaliações corporais no período para comparar peso e cintura.</p>';
  get('#analysis-trends').innerHTML=chart(byDay.map(d=>({date:d.date,kcal:d.entries.reduce((s,x)=>s+(x.nutrients?.kcal||0),0)})),'kcal','Energia nos dias registrados','kcal',180);
+ const windowStats=(offset,size)=>{
+ const entries=api.state.entries.filter(row=>{const days=Math.round((dayDate(api.state.date)-dayDate(row.date))/86400000);return days>=offset&&days<offset+size});
+ const days=[...new Set(entries.map(row=>row.date))];
+ return {count:days.length,energy:days.length?entries.reduce((sum,row)=>sum+(row.nutrients?.kcal||0),0)/days.length:null};
+};
+const week=windowStats(0,7),prevWeek=windowStats(7,7),month=windowStats(0,30),prevMonth=windowStats(30,30);
+const compareBlock=(name,a,b)=>'<div class="mini-stat"><small>'+name+'</small><strong>'+fmt(a.energy,0)+' kcal / dia registrado</strong><small>Anterior: '+fmt(b.energy,0)+' kcal · '+a.count+' / '+b.count+' dias registrados</small></div>';
+get('#analysis-comparison').insertAdjacentHTML('beforeend','<div class="stats-mini"><div class="mini-stat"><small>Comparações</small><strong>Semanas e meses</strong><small>Dias sem registros são excluídos das médias</small></div>'+compareBlock('Últimos 7 dias vs 7 anteriores',week,prevWeek)+compareBlock('Últimos 30 dias vs 30 anteriores',month,prevMonth)+'</div>');
 }
 function renderAdvancedSettings(){
  const f=get('#advanced-form');if(!f)return;
@@ -326,6 +335,7 @@ function onExtraChange(evt){
  if(x.id==='body-period'){extra.period=x.value;renderBody()}
  if(x.id==='analysis-period'){extra.analysisPeriod=x.value;renderAdvancedReports()}
  if(x.id==='awards-category')renderAwards();
+ if(x.id==='water-selected-date'&&validDay(x.value)){api.state.date=x.value;api.switchView('hidratacao')}
 }
 /* Test helpers only; no mutable globals exposed. */
 export const extraDiagnostics=()=>({body:extra.body.length,water:extra.water.length,favorites:extra.favorites.length,awards:extra.awards.length,catalog:ACHIEVEMENTS.length});
