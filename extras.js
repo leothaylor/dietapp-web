@@ -45,7 +45,7 @@ export async function refreshExtras({notifyAwards=false}={}){
 }
 export function setupExtras(context){api=context;document.addEventListener('click',onExtraClick);document.addEventListener('submit',onExtraSubmit);document.addEventListener('change',onExtraChange)}
 export async function markBackup(){await logEvent('backupDates');await persist()}
-async function logEvent(kind){const date=api.state.date;const events={...extra.prefs.events};const values=new Set(events[kind]||[]);values.add(date);events[kind]=[...values].sort();extra.prefs={...extra.prefs,events};await api.request('settings','put',extra.prefs)}
+async function logEvent(kind){const date=iso(new Date());const events={...extra.prefs.events};const values=new Set(events[kind]||[]);values.add(date);events[kind]=[...values].sort();extra.prefs={...extra.prefs,events};await api.request('settings','put',extra.prefs)}
 async function persist(){await api.refresh()}
 function daysAgo(date,days){if(days==='all')return true;const delta=Math.round((dayDate(api.state.date)-dayDate(date))/86400000);return delta>=0&&delta<Number(days)}
 function distinctLatest(samples){const m=new Map();[...samples].sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||''))).forEach(v=>m.set(v.date,v));return [...m.values()].sort((a,b)=>a.date.localeCompare(b.date))}
@@ -134,7 +134,7 @@ function renderAdvancedReports(){
  const byDay=dates.map(date=>({date,entries:periodEntries.filter(x=>x.date===date)}));
  const completed=byDay.filter(d=>{
    const kcal=d.entries.reduce((a,x)=>a+(x.nutrients?.kcal||0),0),protein=d.entries.reduce((a,x)=>a+(x.nutrients?.protein||0),0);
-   return d.entries.every(x=>x.nutrients?.kcal!==null&&x.nutrients?.protein!==null)&&Math.abs(kcal-goal.kcal)<=goal.kcal*.1&&protein>=goal.protein*.9
+   return d.entries.every(x=>typeof x.nutrients?.kcal==='number'&&typeof x.nutrients?.protein==='number')&&Math.abs(kcal-goal.kcal)<=goal.kcal*.1&&protein>=goal.protein*.9
  }).length;
  get('#analysis-adherence').textContent=dates.length?'Dias registrados dentro de ±10% da meta calórica e com ao menos 90% da proteína: '+completed+' / '+dates.length+' ('+fmt(100*completed/dates.length,0)+'%). Os dias sem lançamentos não entram neste índice.':'Sem registros no período selecionado.';
  const coverage=Object.keys(micronames).map(key=>({key,known:periodEntries.filter(x=>typeof x.nutrients?.[key]==='number').length,total:periodEntries.length}));
