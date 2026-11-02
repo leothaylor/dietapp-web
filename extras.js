@@ -1,5 +1,6 @@
 /* Nutri 2 — módulos adicionais. Dados privados mantidos exclusivamente no IndexedDB. */
 import {ACHIEVEMENTS,CATEGORY_LABELS,evaluateAchievements,bodyComposition,movingWeight} from './achievements.js';
+import {searchUsda,fetchUsdaFood} from './usda.js';
 let api;
 export const extra={body:[],water:[],favorites:[],awards:[],prefs:null,period:'30',analysisPeriod:'30'};
 const DEFAULT_PREFS={id:'advanced',heightCm:null,sex:'male',weightGoal:null,weightLow:null,weightHigh:null,waterGoalMl:2500,events:{backupDates:[],csvDates:[],reportDates:[],importDates:[]}};
@@ -211,6 +212,12 @@ function parsePortions(text){
  return lines.map(line=>{const i=line.lastIndexOf('=');if(i<1)throw Error('Use uma medida por linha: 1 fatia = 25');const name=line.slice(0,i).trim(),grams=Number(line.slice(i+1).trim().replace(',','.'));if(!name||name.length>60||!Number.isFinite(grams)||grams<=0||grams>100000)throw Error('Medida inválida: '+line);return {name,grams}});
 }
 export function readPortions(text){return parsePortions(text)}
+function usdaModal(){
+ api.modal('Buscar alimentos no USDA','<form id="usda-form"><label class="field"><span>Pesquisa em inglês (ex.: cooked rice, banana)</span><input name="term" required minlength="2" maxlength="100" placeholder="Ex.: chicken breast"></label><div class="form-actions"><button class="btn btn-primary" type="submit">Pesquisar</button></div></form><div id="usda-results" class="list-stack"></div><p class="fine-print">Fonte gratuita USDA FoodData Central, banco Foundation / SR Legacy. A chave pública DEMO_KEY tem limites compartilhados e pode falhar. Seus dados não são enviados ao nosso repositório.</p>');
+}
+function usdaResults(items){
+ get('#usda-results').innerHTML=items.length?items.map(x=>'<div class="list-row"><div><strong>'+e(x.description)+'</strong><small>'+e(x.dataType)+' · FDC '+x.fdcId+'</small></div><button class="btn btn-soft small" data-usda-id="'+x.fdcId+'">+ Importar</button></div>').join(''):'<p class="muted">Nenhum alimento encontrado.</p>'
+}
 function libraryImportModal(){
  api.modal('Importar biblioteca gerada pelo GPT','<p class="muted">Arquivo JSON no formato <code>nutri-library</code>, com alimentos e receitas. Os dados serão validados e acrescentados sem apagar a biblioteca.</p><label class="field"><span>Selecione o arquivo</span><input id="library-json-input" type="file" accept="application/json,.json"></label><p class="help-line">Valores nutricionais por 100 g. Informações ausentes devem ser null. Não faça importação de arquivos sem verificar a origem.</p><div class="form-actions"><button class="btn btn-outline" data-close-modal>Cancelar</button><button class="btn btn-primary" id="library-json-apply" type="button">Importar</button></div>')
 }
@@ -237,9 +244,14 @@ async function importLibrary(){
  await logEvent('importDates');api.closeModal();await persist();api.notify('Biblioteca importada: '+foods.length+' alimentos, '+recipes.length+' receitas.');
 }
 async function onExtraSubmit(evt){
- const f=evt.target;if(!['body-form','advanced-form','water-form','favorite-form','copy-form'].includes(f.id))return;
+ const f=evt.target;if(!['body-form','advanced-form','water-form','favorite-form','copy-form','usda-form'].includes(f.id))return;
  evt.preventDefault();evt.stopPropagation();
  try{
+ if(f.id==='usda-form'){
+   const result=get('#usda-results');result.textContent='Pesquisando USDA...';
+   try{usdaResults(await searchUsda(f.elements.term.value))}catch(err){result.textContent='Não foi possível consultar: '+err.message}
+   return;
+ }
  if(f.id==='body-form'){
   const date=f.elements.date.value,weightKg=n(f.elements.weightKg.value);if(!validDay(date)||weightKg===null||weightKg<1||weightKg>400)throw Error('Revise a data e o peso.');
   const data={id:f.dataset.editId||uid(),date,weightKg,createdAt:new Date().toISOString()};
@@ -297,6 +309,13 @@ async function onExtraClick(evt){
  else if(b.dataset.duplicateRecipe){const recipe=api.state.recipes.find(x=>x.id===b.dataset.duplicateRecipe);if(!recipe)return;await api.request('recipes','put',{...recipe,id:uid(),name:recipe.name+' — Cópia',updatedAt:new Date().toISOString()});await persist();api.notify('Receita duplicada.')}
  else if(b.dataset.csvExport)csvExport(b.dataset.csvExport);
  else if(b.id==='analysis-log'){await logEvent('reportDates');await persist();api.notify('Relatório registrado no histórico de análises.')}
+ else if(b.id==='usda-open')usdaModal();
+ else if(b.dataset.usdaId){
+   const item=await fetchUsdaFood(b.dataset.usdaId);
+   if(api.state.foods.some(f=>f.sourceUrl===item.sourceUrl)){api.notify('Alimento USDA já cadastrado.');return}
+   await api.request('foods','put',{...item,id:uid()});
+   api.closeModal();await persist();api.notify('Alimento USDA importado: '+item.name);
+ }
  else if(b.id==='library-json-open')libraryImportModal();
  else if(b.id==='library-json-apply')await importLibrary();
  else if(b.hasAttribute('data-close-award'))get('#achievement-popup').hidden=true;
